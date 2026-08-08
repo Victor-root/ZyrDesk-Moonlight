@@ -2,10 +2,10 @@ QT += core quick network quickcontrols2 svg
 CONFIG += c++11
 
 unix:!macx {
-    TARGET = moonlight
+    TARGET = zyrdesk-session
 } else {
     # On macOS, this is the name displayed in the global menu bar
-    TARGET = Moonlight
+    TARGET = zyrdesk-session
 }
 
 include(../globaldefs.pri)
@@ -535,7 +535,7 @@ unix:!macx: {
     desktop.files = deploy/linux/com.moonlight_stream.Moonlight.desktop
     desktop.path = $$PREFIX/$$DATADIR/applications/
 
-    icons.files = res/moonlight.svg
+    icons.files = res/zyrdesk.svg
     icons.path = $$PREFIX/$$DATADIR/icons/hicolor/scalable/apps/
 
     appstream.files = deploy/linux/com.moonlight_stream.Moonlight.appdata.xml
@@ -544,10 +544,10 @@ unix:!macx: {
     INSTALLS += target desktop icons appstream
 }
 win32 {
-    RC_ICONS = moonlight.ico
-    QMAKE_TARGET_COMPANY = Moonlight Game Streaming Project
-    QMAKE_TARGET_DESCRIPTION = Moonlight Game Streaming Client
-    QMAKE_TARGET_PRODUCT = Moonlight
+    RC_ICONS = zyrdesk.ico
+    QMAKE_TARGET_COMPANY = ZyrDesk
+    QMAKE_TARGET_DESCRIPTION = Moteur de session ZyrDesk
+    QMAKE_TARGET_PRODUCT = ZyrDesk
 
     CONFIG -= embed_manifest_exe
     QMAKE_LFLAGS += /MANIFEST:embed /MANIFESTINPUT:$${PWD}/Moonlight.exe.manifest
