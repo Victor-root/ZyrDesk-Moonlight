@@ -292,7 +292,7 @@ LONG WINAPI UnhandledExceptionHandler(struct _EXCEPTION_POINTERS *ExceptionInfo)
 
 #endif
 
-// zyr: what the process returns, so whoever started the session can tell
+// zyr: what the process returns, so whoever started the engine can tell
 // a normal end from a failure without having to read a log. Upstream
 // returns success in every case, which leaves automatic recovery unable
 // to decide whether starting again is worth it.
@@ -300,11 +300,20 @@ enum ZyrExit {
     ZyrExitOk = 0,
     ZyrExitSessionFailed = 2,
     ZyrExitUnreachable = 3,
+    ZyrExitPairingFailed = 4,
 };
 
 // One session runs per process, so what it went through is legitimately
 // held here rather than threaded through every handler.
 static bool s_ZyrSessionFailed = false;
+
+// zyr: says a line on the error stream, where whoever started the engine
+// reads it. Written as UTF-8 rather than through Qt's local encoding,
+// which mangles every accent on its way into a log file.
+static void zyrSay(const QString& text)
+{
+    fprintf(stderr, "%s\n", text.toUtf8().constData());
+}
 
 // zyr: runs a session with no Qt window behind it, reporting on the error
 // stream what the loading window used to display.
@@ -313,20 +322,18 @@ static void zyrRunSessionWithoutWindow(Session* session)
     QObject::connect(session, &Session::stageFailed, session,
                      [](QString stage, int errorCode, QString failingPorts) {
         s_ZyrSessionFailed = true;
-        fprintf(stderr, "Starting %s failed: error %d\n", qPrintable(stage), errorCode);
+        zyrSay(QString("Starting %1 failed: error %2").arg(stage).arg(errorCode));
         if (!failingPorts.isEmpty()) {
             // Named for the record only: these are the numbers of the
             // standard protocol, not necessarily the ones in use here.
-            fprintf(stderr, "  ports named by the engine: %s\n", qPrintable(failingPorts));
+            zyrSay(QString("  ports named by the engine: %1").arg(failingPorts));
         }
     });
     QObject::connect(session, &Session::displayLaunchError, session, [](QString text) {
         s_ZyrSessionFailed = true;
-        fprintf(stderr, "%s\n", qPrintable(text));
+        zyrSay(text);
     });
-    QObject::connect(session, &Session::displayLaunchWarning, session, [](QString text) {
-        fprintf(stderr, "%s\n", qPrintable(text));
-    });
+    QObject::connect(session, &Session::displayLaunchWarning, session, zyrSay);
 
     // There is no Qt window to hand over, and the session guards against
     // its absence everywhere it would otherwise use it.
@@ -796,13 +803,13 @@ int main(int argc, char *argv[])
             // was saying goes to the error stream instead, where whoever
             // started us can read it.
             QObject::connect(launcher, &CliStartStream::Launcher::searchingComputer, &app, []() {
-                fprintf(stderr, "Establishing connection to PC...\n");
+                zyrSay("Establishing connection to PC...");
             });
             QObject::connect(launcher, &CliStartStream::Launcher::searchingApp, &app, []() {
-                fprintf(stderr, "Loading app list...\n");
+                zyrSay("Loading app list...");
             });
             QObject::connect(launcher, &CliStartStream::Launcher::failed, &app, [](QString text) {
-                fprintf(stderr, "%s\n", qPrintable(text));
+                zyrSay(text);
                 QCoreApplication::exit(ZyrExitUnreachable);
             });
 
@@ -810,7 +817,7 @@ int main(int argc, char *argv[])
             // running is precisely the one being replaced.
             QObject::connect(launcher, &CliStartStream::Launcher::appQuitRequired, &app,
                              [launcher](QString appName) {
-                fprintf(stderr, "%s is already running, taking it over\n", qPrintable(appName));
+                zyrSay(QString("%1 is already running, taking it over").arg(appName));
                 launcher->quitRunningApp();
             });
 
@@ -841,11 +848,35 @@ int main(int argc, char *argv[])
         }
     case GlobalCommandLineParser::PairRequested:
         {
-            initialView = "qrc:/gui/CliPair.qml";
             PairCommandLineParser pairParser;
             pairParser.parse(app.arguments());
-            auto launcher = new CliPair::Launcher(pairParser.getHost(), pairParser.getPredefinedPin(), &app);
-            engine.rootContext()->setContextProperty("launcher", launcher);
+            auto launcher = new CliPair::Launcher(pairParser.getHost(),
+                                                  pairParser.getPredefinedPin(), &app);
+
+            // zyr: pairing showed a window of its own for the same reason
+            // the stream did, and with as little cause: the code is not
+            // the engine's to reveal, it was handed one on the command
+            // line by whoever is already showing it.
+            QObject::connect(launcher, &CliPair::Launcher::searchingComputer, &app, []() {
+                zyrSay("Establishing connection to PC...");
+            });
+            QObject::connect(launcher, &CliPair::Launcher::pairing, &app,
+                             [](QString pcName, QString pin) {
+                zyrSay(QString("Pairing with %1, waiting for code %2").arg(pcName, pin));
+            });
+            QObject::connect(launcher, &CliPair::Launcher::failed, &app, [](QString text) {
+                zyrSay(text);
+                // Upstream ends on a success code here, which leaves the
+                // caller pairing, failing, and starting a session that
+                // cannot work.
+                QCoreApplication::exit(ZyrExitPairingFailed);
+            });
+            QObject::connect(launcher, &CliPair::Launcher::success, &app, []() {
+                QCoreApplication::exit(ZyrExitOk);
+            });
+
+            launcher->execute(new ComputerManager(StreamingPreferences::get()));
+            hasGUI = false;
             break;
         }
     case GlobalCommandLineParser::ListRequested:

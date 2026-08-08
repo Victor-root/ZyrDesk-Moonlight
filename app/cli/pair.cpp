@@ -49,7 +49,7 @@ public:
         Q_Q(Launcher);
 
         switch (event.type) {
-        // Occurs when CliPair becomes visible and the UI calls launcher's execute()
+        // Occurs when whoever asked for the pairing calls execute()
         case Event::Executed:
             if (m_State == StateInit) {
                 m_State = StateSeekComputer;

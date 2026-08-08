@@ -86,8 +86,10 @@ public:
                     emit q->searchingApp();
                 } else {
                     m_State = StateFailure;
-                    QString msg = QObject::tr("Computer %1 has not been paired. "
-                                              "Please open Moonlight to pair before streaming.")
+                    // zyr: the instruction that followed named the project
+                    // and told the user to open a window that no longer
+                    // exists. Whoever started us knows how to pair.
+                    QString msg = QObject::tr("Computer %1 has not been paired.")
                             .arg(event.computer->name);
                     emit q->failed(msg);
                 }
