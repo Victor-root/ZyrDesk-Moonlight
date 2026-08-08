@@ -12,6 +12,8 @@
 #include <QElapsedTimer>
 #include <QTemporaryFile>
 #include <QRegularExpression>
+#include <QTimer>
+#include <QEventLoop>
 
 // Don't let SDL hook our main function, since Qt is already
 // doing the same thing. This needs to be before any headers
@@ -289,6 +291,56 @@ LONG WINAPI UnhandledExceptionHandler(struct _EXCEPTION_POINTERS *ExceptionInfo)
 }
 
 #endif
+
+// zyr: what the process returns, so whoever started the session can tell
+// a normal end from a failure without having to read a log. Upstream
+// returns success in every case, which leaves automatic recovery unable
+// to decide whether starting again is worth it.
+enum ZyrExit {
+    ZyrExitOk = 0,
+    ZyrExitSessionFailed = 2,
+    ZyrExitUnreachable = 3,
+};
+
+// One session runs per process, so what it went through is legitimately
+// held here rather than threaded through every handler.
+static bool s_ZyrSessionFailed = false;
+
+// zyr: runs a session with no Qt window behind it, reporting on the error
+// stream what the loading window used to display.
+static void zyrRunSessionWithoutWindow(Session* session)
+{
+    QObject::connect(session, &Session::stageFailed, session,
+                     [](QString stage, int errorCode, QString failingPorts) {
+        s_ZyrSessionFailed = true;
+        fprintf(stderr, "Starting %s failed: error %d\n", qPrintable(stage), errorCode);
+        if (!failingPorts.isEmpty()) {
+            // Named for the record only: these are the numbers of the
+            // standard protocol, not necessarily the ones in use here.
+            fprintf(stderr, "  ports named by the engine: %s\n", qPrintable(failingPorts));
+        }
+    });
+    QObject::connect(session, &Session::displayLaunchError, session, [](QString text) {
+        s_ZyrSessionFailed = true;
+        fprintf(stderr, "%s\n", qPrintable(text));
+    });
+    QObject::connect(session, &Session::displayLaunchWarning, session, [](QString text) {
+        fprintf(stderr, "%s\n", qPrintable(text));
+    });
+
+    // There is no Qt window to hand over, and the session guards against
+    // its absence everywhere it would otherwise use it.
+    session->exec(nullptr);
+
+    // What the session reported once the picture was up came from its own
+    // threads and is still waiting in the queue: nothing pumped it while
+    // the stream held the main thread. Reading the outcome before
+    // delivering it would call a lost connection a normal end.
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+    QCoreApplication::sendPostedEvents();
+
+    QCoreApplication::exit(s_ZyrSessionFailed ? ZyrExitSessionFailed : ZyrExitOk);
+}
 
 int main(int argc, char *argv[])
 {
@@ -730,14 +782,52 @@ int main(int argc, char *argv[])
         break;
     case GlobalCommandLineParser::StreamRequested:
         {
-            initialView = "qrc:/gui/CliStartStreamSegue.qml";
             StreamingPreferences* preferences = StreamingPreferences::get();
             StreamCommandLineParser streamParser;
             streamParser.parse(app.arguments(), preferences);
-            QString host    = streamParser.getHost();
-            QString appName = streamParser.getAppName();
-            auto launcher   = new CliStartStream::Launcher(host, appName, preferences, &app);
-            engine.rootContext()->setContextProperty("launcher", launcher);
+            auto launcher = new CliStartStream::Launcher(streamParser.getHost(),
+                                                         streamParser.getAppName(),
+                                                         preferences, &app);
+
+            // zyr: started from the command line, this program is the
+            // picture and nothing else. The loading window it used to show
+            // while reaching the host put another project's interface in
+            // front of the user for a second, every single session. What it
+            // was saying goes to the error stream instead, where whoever
+            // started us can read it.
+            QObject::connect(launcher, &CliStartStream::Launcher::searchingComputer, &app, []() {
+                fprintf(stderr, "Establishing connection to PC...\n");
+            });
+            QObject::connect(launcher, &CliStartStream::Launcher::searchingApp, &app, []() {
+                fprintf(stderr, "Loading app list...\n");
+            });
+            QObject::connect(launcher, &CliStartStream::Launcher::failed, &app, [](QString text) {
+                fprintf(stderr, "%s\n", qPrintable(text));
+                QCoreApplication::exit(ZyrExitUnreachable);
+            });
+
+            // Nobody is here to answer a dialog, and the session already
+            // running is precisely the one being replaced.
+            QObject::connect(launcher, &CliStartStream::Launcher::appQuitRequired, &app,
+                             [launcher](QString appName) {
+                fprintf(stderr, "%s is already running, taking it over\n", qPrintable(appName));
+                launcher->quitRunningApp();
+            });
+
+            // The session runs to completion inside the call below, and it is
+            // announced from the middle of the host bookkeeping, which still
+            // has work left to do. Handing it to the next turn of the event
+            // loop is what the loading window used to obtain by loading its
+            // stream view asynchronously.
+            QObject::connect(launcher, &CliStartStream::Launcher::sessionCreated, &app,
+                             [](QString, Session* session) {
+                QTimer::singleShot(0, session, [session]() {
+                    zyrRunSessionWithoutWindow(session);
+                });
+            });
+
+            launcher->execute(new ComputerManager(preferences));
+            hasGUI = false;
             break;
         }
     case GlobalCommandLineParser::QuitRequested:

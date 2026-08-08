@@ -28,8 +28,8 @@ CenteredGridView {
     }
 
     // Note: Any initialization done here that is critical for streaming must
-    // also be done in CliStartStreamSegue.qml, since this code does not run
-    // for command-line initiated streams.
+    // also be done where main.cpp starts a command-line stream, since this
+    // code does not run for command-line initiated streams.
     StackView.onActivated: {
         // Setup signals on CM
         ComputerManager.computerAddCompleted.connect(addComplete)

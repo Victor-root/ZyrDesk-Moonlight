@@ -1266,7 +1266,9 @@ void Session::getWindowDimensions(int& x, int& y,
     // Create our window on the same display that Qt's UI
     // was being displayed on.
     else {
-        Q_ASSERT(m_QtWindow != nullptr);
+        // zyr: a session started from the command line has no Qt window,
+        // and the primary display is then the right answer. What used to
+        // be an impossible case is now the normal one.
         if (m_QtWindow != nullptr) {
             QScreen* screen = m_QtWindow->screen();
             if (screen != nullptr) {
