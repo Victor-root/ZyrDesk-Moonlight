@@ -171,8 +171,11 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
     }
     settings.endArray();
 
-    // Fetch latest compatibility data asynchronously
-    m_CompatFetcher.start();
+    // zyr: compatibility data was fetched from the upstream project's
+    // website here, on every session and every pairing. It gates a
+    // GeForce Experience version check that our host engine is not, and
+    // the check reads as supported when the data is absent, which is
+    // what it now always is.
 
     // Start the delayed flush thread to handle saveHosts() calls
     m_DelayedFlushThread = new DelayedFlushThread(this);

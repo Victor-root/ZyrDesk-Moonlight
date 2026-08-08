@@ -10,17 +10,14 @@
 #define SER_GUID "guid"
 #define SER_MAPPING "mapping"
 
-MappingFetcher* MappingManager::s_MappingFetcher;
-
 MappingManager::MappingManager()
 {
     QSettings settings;
 
-    // Load updated mappings from the Internet once per Moonlight launch
-    if (s_MappingFetcher == nullptr) {
-        s_MappingFetcher = new MappingFetcher();
-        s_MappingFetcher->start();
-    }
+    // zyr: gamepad mappings were downloaded from the upstream project's
+    // website on the way in, once per launch, meaning once per session
+    // here. The engine is not the product and reaches nothing but the
+    // tunnel; the table shipped beside it is what we use.
 
     // First load existing saved mappings. This ensures the user's
     // hints can always override the old data.

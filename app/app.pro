@@ -152,7 +152,11 @@ win32 {
     CONFIG += ffmpeg libplacebo
 }
 win32:!winrt {
-    CONFIG += soundio discord-rpc
+    # zyr: the Discord integration is left out. It announced every
+    # session to the user's friends under the upstream project's name
+    # and icon, from its registered application id, and an invisible
+    # engine has no business publishing anything anywhere.
+    CONFIG += soundio
 }
 macx {
     !disable-prebuilts {

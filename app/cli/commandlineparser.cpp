@@ -3,10 +3,6 @@
 #include <QCommandLineParser>
 #include <QRegularExpression>
 
-#if defined(Q_OS_WIN)
-#include <qt_windows.h>
-#endif
-
 static bool inRange(int value, int min, int max)
 {
     return value >= min && value <= max;
@@ -59,13 +55,12 @@ public:
 
     void showMessage(QString message, MessageType type) const
     {
-    #if defined(Q_OS_WIN32)
-        UINT flags = MB_OK | MB_TOPMOST | MB_SETFOREGROUND;
-        flags |= (type == Info ? MB_ICONINFORMATION : MB_ICONERROR);
-        QString title = "Moonlight";
-        MessageBoxW(nullptr, reinterpret_cast<const wchar_t *>(message.utf16()),
-                    reinterpret_cast<const wchar_t *>(title.utf16()), flags);
-    #endif
+        // zyr: a message box used to open here on Windows, named after
+        // the upstream project. It served a user who had double-clicked
+        // the program and had no console to read; started by a program,
+        // as this engine always is, it waited on a click nobody was
+        // there to give while the caller waited on the process. The text
+        // was already going to the stream below either way.
         message = message.endsWith('\n') ? message : message + '\n';
         fputs(qPrintable(message), type == Info ? stdout : stderr);
     }
