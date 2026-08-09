@@ -10,7 +10,6 @@
         <file>gui/NavigableToolButton.qml</file>
         <file>gui/NavigableItemDelegate.qml</file>
         <file>gui/NavigableMenuItem.qml</file>
-        <file>gui/CliQuitStreamSegue.qml</file>
         <file>gui/AutoResizingComboBox.qml</file>
         <file>gui/NavigableMenu.qml</file>
         <file>gui/ErrorMessageDialog.qml</file>

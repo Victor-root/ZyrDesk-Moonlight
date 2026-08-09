@@ -301,6 +301,7 @@ enum ZyrExit {
     ZyrExitSessionFailed = 2,
     ZyrExitUnreachable = 3,
     ZyrExitPairingFailed = 4,
+    ZyrExitQuitFailed = 5,
 };
 
 // One session runs per process, so what it went through is legitimately
@@ -839,11 +840,30 @@ int main(int argc, char *argv[])
         }
     case GlobalCommandLineParser::QuitRequested:
         {
-            initialView = "qrc:/gui/CliQuitStreamSegue.qml";
             QuitCommandLineParser quitParser;
             quitParser.parse(app.arguments());
             auto launcher = new CliQuitStream::Launcher(quitParser.getHost(), &app);
-            engine.rootContext()->setContextProperty("launcher", launcher);
+
+            // zyr: the last of the three command line paths that showed a
+            // window of another project's making. This one is asked for
+            // from inside a session, so its window would have appeared on
+            // top of the picture, which is the worst place of the three.
+            QObject::connect(launcher, &CliQuitStream::Launcher::searchingComputer, &app, []() {
+                zyrSay("Establishing connection to PC...");
+            });
+            QObject::connect(launcher, &CliQuitStream::Launcher::quittingApp, &app, []() {
+                zyrSay("Quitting app...");
+            });
+            QObject::connect(launcher, &CliQuitStream::Launcher::failed, &app, [](QString text) {
+                zyrSay(text);
+                // Upstream leaves the process running on its error dialog
+                // here. Nobody is there to close it, and the caller has to
+                // be told the host still holds the app.
+                QCoreApplication::exit(ZyrExitQuitFailed);
+            });
+
+            launcher->execute(new ComputerManager(StreamingPreferences::get()));
+            hasGUI = false;
             break;
         }
     case GlobalCommandLineParser::PairRequested:
