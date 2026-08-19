@@ -910,6 +910,16 @@ void Session::emitLaunchWarning(QString text)
     // Emit the warning to the UI
     emit displayLaunchWarning(text);
 
+    // zyr: the wait below exists so that a person can read a message on a
+    // window. Started from the command line there is no window, and the
+    // message has already gone to the error stream where it is read
+    // afterwards and at leisure. Waiting three seconds and a half for
+    // nobody is three seconds and a half of nothing on screen, and more
+    // than one of these fires on an ordinary session.
+    if (m_QtWindow == nullptr) {
+        return;
+    }
+
     // Wait a little bit so the user can actually read what we just said.
     // This wait is a little longer than the actual toast timeout (3 seconds)
     // to allow it to transition off the screen before continuing.
@@ -1510,7 +1520,10 @@ bool Session::startConnectionAsync()
 {
     // Wait 1.5 seconds before connecting to let the user
     // have time to read any messages present on the segue
-    SDL_Delay(1500);
+    // zyr: only when there is a segue to read them on.
+    if (m_QtWindow != nullptr) {
+        SDL_Delay(1500);
+    }
 
     // The UI should have ensured the old game was already quit
     // if we decide to stream a different game.
@@ -1852,12 +1865,22 @@ void Session::execInternal()
 
     // HACK: Remove once proper Dark Mode support lands in SDL
 #ifdef Q_OS_WIN32
-    if (m_QtWindow != nullptr) {
+    {
         BOOL darkModeEnabled;
 
         // Query whether dark mode is enabled for our Qt window (which tracks the OS dark mode state)
-        if (FAILED(DwmGetWindowAttribute((HWND)m_QtWindow->winId(), DWMWA_USE_IMMERSIVE_DARK_MODE, &darkModeEnabled, sizeof(darkModeEnabled))) &&
-            FAILED(DwmGetWindowAttribute((HWND)m_QtWindow->winId(), DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, &darkModeEnabled, sizeof(darkModeEnabled)))) {
+        // zyr: there is no such window when we are started from the
+        // command line, and the light frame this left behind was the only
+        // thing on screen between the connection being made and the first
+        // picture: a white title bar over an empty rectangle. Dark is the
+        // only sensible answer for the fraction of a second this frame is
+        // seen, before the window goes full screen and the picture fills
+        // it.
+        if (m_QtWindow == nullptr) {
+            darkModeEnabled = TRUE;
+        }
+        else if (FAILED(DwmGetWindowAttribute((HWND)m_QtWindow->winId(), DWMWA_USE_IMMERSIVE_DARK_MODE, &darkModeEnabled, sizeof(darkModeEnabled))) &&
+                 FAILED(DwmGetWindowAttribute((HWND)m_QtWindow->winId(), DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, &darkModeEnabled, sizeof(darkModeEnabled)))) {
             darkModeEnabled = FALSE;
         }
 
