@@ -1817,6 +1817,23 @@ void Session::execInternal()
         defaultWindowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
     }
 
+    // zyr: and a window that is not going to cover the screen is born
+    // hidden, and shown once everything about it has been settled.
+    //
+    // Created plain, it appears at once, in the middle of whichever
+    // display the system happens to call first, and stands there empty
+    // while the icon is drawn, the display modes are enumerated and the
+    // decoder starts. On a second screen that empty frame appears on the
+    // wrong one: the display is picked before any of this, and nothing
+    // outside can reach the window before it has been drawn.
+    //
+    // Only for the windowed case. Full screen has a display mode to set
+    // first and the lines below do it on a window the system already
+    // knows is on screen; that path is left exactly as it was.
+    if (!m_IsFullScreen) {
+        defaultWindowFlags |= SDL_WINDOW_HIDDEN;
+    }
+
     // If we're starting in windowed mode and the Moonlight GUI is maximized or
     // minimized, match that with the streaming window.
     if (!m_IsFullScreen && m_QtWindow != nullptr) {
@@ -1986,6 +2003,11 @@ void Session::execInternal()
     // Set timer resolution to 1 ms on Windows for greater
     // sleep precision and more accurate callback timing.
     SDL_SetHint(SDL_HINT_TIMER_RESOLUTION, "1");
+
+    // zyr: everything about this window is settled now: its size, its
+    // place, its icon, its display mode and its frame. Shown here, and
+    // not at its creation, so nothing empty is ever seen.
+    SDL_ShowWindow(m_Window);
 
     int currentDisplayIndex = SDL_GetWindowDisplayIndex(m_Window);
 
