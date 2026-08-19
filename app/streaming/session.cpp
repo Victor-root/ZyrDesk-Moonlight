@@ -1803,6 +1803,20 @@ void Session::execInternal()
     // We always want a resizable window with High DPI enabled
     Uint32 defaultWindowFlags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_RESIZABLE;
 
+    // zyr: a window that is going to cover the screen is born covering
+    // it. Created plain and enlarged a few lines below, it stands for a
+    // moment as an ordinary window, with a title bar and a border, over
+    // nothing at all: no picture has arrived yet and none will for as
+    // long as the decoder takes to start. That empty frame was the last
+    // thing seen before the picture, every session.
+    //
+    // Only for the borderless kind. The exclusive kind takes the screen
+    // away from everything else and has a display mode to set first,
+    // which is what the lines after the creation are for.
+    if (m_IsFullScreen && m_FullScreenFlag == SDL_WINDOW_FULLSCREEN_DESKTOP) {
+        defaultWindowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+    }
+
     // If we're starting in windowed mode and the Moonlight GUI is maximized or
     // minimized, match that with the streaming window.
     if (!m_IsFullScreen && m_QtWindow != nullptr) {
