@@ -784,6 +784,17 @@ int main(int argc, char *argv[])
     QString initialView;
     bool hasGUI = true;
 
+    // zyr: each command line path below builds a computer manager and then
+    // lets it leak. That object owns the thread that writes down what it
+    // learns, and a freshly paired host's certificate is written by that
+    // thread rather than on the spot. Nothing waited for it, so whether a
+    // pairing outlived the process that made it was luck: the next session
+    // found no certificate, could not open an encrypted connection, and
+    // gave up saying the two computers had never met. Destroyed after the
+    // event loop instead, since its destructor is what waits for that
+    // thread.
+    ComputerManager* cliComputerManager = nullptr;
+
     switch (commandLineParserResult) {
     case GlobalCommandLineParser::NormalStartRequested:
         initialView = "qrc:/gui/PcView.qml";
@@ -834,7 +845,8 @@ int main(int argc, char *argv[])
                 });
             });
 
-            launcher->execute(new ComputerManager(preferences));
+            cliComputerManager = new ComputerManager(preferences);
+            launcher->execute(cliComputerManager);
             hasGUI = false;
             break;
         }
@@ -862,7 +874,8 @@ int main(int argc, char *argv[])
                 QCoreApplication::exit(ZyrExitQuitFailed);
             });
 
-            launcher->execute(new ComputerManager(StreamingPreferences::get()));
+            cliComputerManager = new ComputerManager(StreamingPreferences::get());
+            launcher->execute(cliComputerManager);
             hasGUI = false;
             break;
         }
@@ -895,7 +908,8 @@ int main(int argc, char *argv[])
                 QCoreApplication::exit(ZyrExitOk);
             });
 
-            launcher->execute(new ComputerManager(StreamingPreferences::get()));
+            cliComputerManager = new ComputerManager(StreamingPreferences::get());
+            launcher->execute(cliComputerManager);
             hasGUI = false;
             break;
         }
@@ -904,7 +918,8 @@ int main(int argc, char *argv[])
             ListCommandLineParser listParser;
             listParser.parse(app.arguments());
             auto launcher = new CliListApps::Launcher(listParser.getHost(), listParser, &app);
-            launcher->execute(new ComputerManager(StreamingPreferences::get()));
+            cliComputerManager = new ComputerManager(StreamingPreferences::get());
+            launcher->execute(cliComputerManager);
             hasGUI = false;
             break;
         }
@@ -924,6 +939,12 @@ int main(int argc, char *argv[])
     // Give worker tasks time to properly exit. Fixes PendingQuitTask
     // sometimes freezing and blocking process exit.
     QThreadPool::globalInstance()->waitForDone(30000);
+
+    // zyr: nothing is left to change what it holds, so let it go and let it
+    // finish writing. Here rather than later: this needs the application to
+    // still be standing, because that is where the settings take their name
+    // from.
+    delete cliComputerManager;
 
 #ifdef Q_OS_WIN32
     // Without an explicit flush, console redirection for the list command
