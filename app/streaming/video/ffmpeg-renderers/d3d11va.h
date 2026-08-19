@@ -21,6 +21,9 @@ public:
     virtual bool prepareDecoderContextInGetFormat(AVCodecContext* context, AVPixelFormat pixelFormat) override;
     virtual void renderFrame(AVFrame* frame) override;
     virtual void notifyOverlayUpdated(Overlay::OverlayType) override;
+    // zyr: a size change is absorbed rather than paid for with a full
+    // rebuild of the decoder.
+    virtual bool notifyWindowChanged(PWINDOW_STATE_CHANGE_INFO info) override;
     virtual int getRendererAttributes() override;
     virtual int getDecoderCapabilities() override;
     virtual bool needsTestFrame() override;
@@ -40,6 +43,9 @@ private:
     static void unlockContext(void* lock_ctx);
 
     bool setupRenderingResources();
+    // zyr: what has to be built again when the window changes size.
+    bool setupSizedResources();
+    bool resizeToWindow();
     std::vector<DXGI_FORMAT> getVideoTextureSRVFormats();
     bool setupVideoTexture(); // for !m_BindDecoderOutputTextures
     bool setupTexturePoolViews(AVD3D11VAFramesContext* frameContext); // for m_BindDecoderOutputTextures

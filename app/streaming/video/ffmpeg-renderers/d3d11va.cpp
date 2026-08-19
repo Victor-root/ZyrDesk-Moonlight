@@ -576,6 +576,80 @@ bool D3D11VARenderer::initialize(PDECODER_PARAMETERS params)
     return true;
 }
 
+// zyr: a window that has only changed size does not need the decoder,
+// the device and every shader thrown away and built again.
+//
+// That is what happens without this: the caller has no way of knowing
+// what a renderer can absorb, so it assumes none and rebuilds the lot,
+// which on this one costs a D3D11 device, a swap chain, seven shaders and
+// a fresh key frame asked of the far computer. A third of a second, every
+// step of a drag. Resizing a window that way is not resizing a window.
+//
+// What a size change really costs is new back buffers and the two things
+// measured against them. Anything else the caller may report — another
+// display, another refresh rate — still goes the long way, and so does
+// any failure here: answering no simply hands the work back.
+bool D3D11VARenderer::notifyWindowChanged(PWINDOW_STATE_CHANGE_INFO info)
+{
+    if (info->stateChangeFlags != WINDOW_STATE_CHANGE_SIZE) {
+        return false;
+    }
+
+    // The same lock a frame is drawn under. This runs on the thread that
+    // pumps events and the drawing runs on its own; replacing what is
+    // being drawn into, while it is being drawn into, is the reason the
+    // SDL renderer gives up on size changes on this platform rather than
+    // handle them.
+    lockContext(this);
+    bool resized = resizeToWindow();
+    unlockContext(this);
+    return resized;
+}
+
+// zyr: new back buffers at the size of the window, and the two things
+// measured against them.
+bool D3D11VARenderer::resizeToWindow()
+{
+    // Nothing may still be holding a back buffer when it is replaced,
+    // and letting go is not enough: what the device has not yet been
+    // told to do can hold one too.
+    m_DeviceContext->OMSetRenderTargets(0, nullptr, nullptr);
+    m_RenderTargetView.Reset();
+    m_VideoVertexBuffer.Reset();
+    m_DeviceContext->Flush();
+
+    DXGI_SWAP_CHAIN_DESC1 chain;
+    HRESULT hr = m_SwapChain->GetDesc1(&chain);
+    if (FAILED(hr)) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                     "IDXGISwapChain::GetDesc1() failed: %x",
+                     hr);
+        return false;
+    }
+
+    // Nought for the count, the size and the format: keep what there was
+    // and take the size from the window itself.
+    hr = m_SwapChain->ResizeBuffers(0, 0, 0, DXGI_FORMAT_UNKNOWN, chain.Flags);
+    if (FAILED(hr)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "IDXGISwapChain::ResizeBuffers() failed: %x",
+                    hr);
+        return false;
+    }
+
+    hr = m_SwapChain->GetDesc1(&chain);
+    if (FAILED(hr)) {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                     "IDXGISwapChain::GetDesc1() failed: %x",
+                     hr);
+        return false;
+    }
+    m_DisplayWidth = chain.Width;
+    m_DisplayHeight = chain.Height;
+
+    return setupSizedResources();
+}
+
 bool D3D11VARenderer::prepareDecoderContext(AVCodecContext* context, AVDictionary**)
 {
     context->hw_device_ctx = av_buffer_ref(m_HwDeviceContext);
@@ -1343,26 +1417,6 @@ bool D3D11VARenderer::setupRenderingResources()
         }
     }
 
-    // Create our render target view
-    {
-        ComPtr<ID3D11Resource> backBufferResource;
-        hr = m_SwapChain->GetBuffer(0, __uuidof(ID3D11Resource), (void**)&backBufferResource);
-        if (FAILED(hr)) {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                         "IDXGISwapChain::GetBuffer() failed: %x",
-                         hr);
-            return false;
-        }
-
-        hr = m_Device->CreateRenderTargetView(backBufferResource.Get(), nullptr, &m_RenderTargetView);
-        if (FAILED(hr)) {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                         "ID3D11Device::CreateRenderTargetView() failed: %x",
-                         hr);
-            return false;
-        }
-    }
-
     // We use a common index buffer for all geometry
     {
         const int indexes[] = {0, 1, 2, 3, 2, 1};
@@ -1384,55 +1438,6 @@ bool D3D11VARenderer::setupRenderingResources()
             m_DeviceContext->IASetIndexBuffer(indexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
         }
         else {
-            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
-                         "ID3D11Device::CreateBuffer() failed: %x",
-                         hr);
-            return false;
-        }
-    }
-
-    // Create our fixed vertex buffer for video rendering
-    {
-        // Scale video to the window size while preserving aspect ratio
-        SDL_Rect src, dst;
-        src.x = src.y = 0;
-        src.w = m_DecoderParams.width;
-        src.h = m_DecoderParams.height;
-        dst.x = dst.y = 0;
-        dst.w = m_DisplayWidth;
-        dst.h = m_DisplayHeight;
-        StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
-
-        // Convert screen space to normalized device coordinates
-        SDL_FRect renderRect;
-        StreamUtils::screenSpaceToNormalizedDeviceCoords(&dst, &renderRect, m_DisplayWidth, m_DisplayHeight);
-
-        // If we're binding the decoder output textures directly, don't sample from the alignment padding area
-        SDL_assert(m_TextureAlignment != 0);
-        float uMax = m_BindDecoderOutputTextures ? ((float)m_DecoderParams.width / FFALIGN(m_DecoderParams.width, m_TextureAlignment)) : 1.0f;
-        float vMax = m_BindDecoderOutputTextures ? ((float)m_DecoderParams.height / FFALIGN(m_DecoderParams.height, m_TextureAlignment)) : 1.0f;
-
-        VERTEX verts[] =
-        {
-            {renderRect.x, renderRect.y, 0, vMax},
-            {renderRect.x, renderRect.y+renderRect.h, 0, 0},
-            {renderRect.x+renderRect.w, renderRect.y, uMax, vMax},
-            {renderRect.x+renderRect.w, renderRect.y+renderRect.h, uMax, 0},
-        };
-
-        D3D11_BUFFER_DESC vbDesc = {};
-        vbDesc.ByteWidth = sizeof(verts);
-        vbDesc.Usage = D3D11_USAGE_IMMUTABLE;
-        vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-        vbDesc.CPUAccessFlags = 0;
-        vbDesc.MiscFlags = 0;
-        vbDesc.StructureByteStride = sizeof(VERTEX);
-
-        D3D11_SUBRESOURCE_DATA vbData = {};
-        vbData.pSysMem = verts;
-
-        hr = m_Device->CreateBuffer(&vbDesc, &vbData, &m_VideoVertexBuffer);
-        if (FAILED(hr)) {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                          "ID3D11Device::CreateBuffer() failed: %x",
                          hr);
@@ -1494,6 +1499,92 @@ bool D3D11VARenderer::setupRenderingResources()
         else {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
                          "ID3D11Device::CreateBlendState() failed: %x",
+                         hr);
+            return false;
+        }
+    }
+
+    // zyr: everything that depends on how big the window is, in one
+    // place, because it is also needed on its own when the window is
+    // resized.
+    return setupSizedResources();
+}
+
+// zyr: the resources whose shape follows the window: what is drawn into,
+// where the video sits in it, and the part of it that is drawn on.
+//
+// Set up here rather than inline above so that resizing a window runs
+// exactly the same code as opening one. Written twice, the two would
+// drift, and a picture drawn from a stale vertex buffer is a picture
+// stretched or letterboxed for a window that no longer exists.
+bool D3D11VARenderer::setupSizedResources()
+{
+    HRESULT hr;
+
+    // Create our render target view
+    {
+        ComPtr<ID3D11Resource> backBufferResource;
+        hr = m_SwapChain->GetBuffer(0, __uuidof(ID3D11Resource), (void**)&backBufferResource);
+        if (FAILED(hr)) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                         "IDXGISwapChain::GetBuffer() failed: %x",
+                         hr);
+            return false;
+        }
+
+        hr = m_Device->CreateRenderTargetView(backBufferResource.Get(), nullptr, &m_RenderTargetView);
+        if (FAILED(hr)) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                         "ID3D11Device::CreateRenderTargetView() failed: %x",
+                         hr);
+            return false;
+        }
+    }
+
+    // Create our fixed vertex buffer for video rendering
+    {
+        // Scale video to the window size while preserving aspect ratio
+        SDL_Rect src, dst;
+        src.x = src.y = 0;
+        src.w = m_DecoderParams.width;
+        src.h = m_DecoderParams.height;
+        dst.x = dst.y = 0;
+        dst.w = m_DisplayWidth;
+        dst.h = m_DisplayHeight;
+        StreamUtils::scaleSourceToDestinationSurface(&src, &dst);
+
+        // Convert screen space to normalized device coordinates
+        SDL_FRect renderRect;
+        StreamUtils::screenSpaceToNormalizedDeviceCoords(&dst, &renderRect, m_DisplayWidth, m_DisplayHeight);
+
+        // If we're binding the decoder output textures directly, don't sample from the alignment padding area
+        SDL_assert(m_TextureAlignment != 0);
+        float uMax = m_BindDecoderOutputTextures ? ((float)m_DecoderParams.width / FFALIGN(m_DecoderParams.width, m_TextureAlignment)) : 1.0f;
+        float vMax = m_BindDecoderOutputTextures ? ((float)m_DecoderParams.height / FFALIGN(m_DecoderParams.height, m_TextureAlignment)) : 1.0f;
+
+        VERTEX verts[] =
+        {
+            {renderRect.x, renderRect.y, 0, vMax},
+            {renderRect.x, renderRect.y+renderRect.h, 0, 0},
+            {renderRect.x+renderRect.w, renderRect.y, uMax, vMax},
+            {renderRect.x+renderRect.w, renderRect.y+renderRect.h, uMax, 0},
+        };
+
+        D3D11_BUFFER_DESC vbDesc = {};
+        vbDesc.ByteWidth = sizeof(verts);
+        vbDesc.Usage = D3D11_USAGE_IMMUTABLE;
+        vbDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        vbDesc.CPUAccessFlags = 0;
+        vbDesc.MiscFlags = 0;
+        vbDesc.StructureByteStride = sizeof(VERTEX);
+
+        D3D11_SUBRESOURCE_DATA vbData = {};
+        vbData.pSysMem = verts;
+
+        hr = m_Device->CreateBuffer(&vbDesc, &vbData, &m_VideoVertexBuffer);
+        if (FAILED(hr)) {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                         "ID3D11Device::CreateBuffer() failed: %x",
                          hr);
             return false;
         }
