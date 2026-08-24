@@ -1,0 +1,295 @@
+#include "zyrsystemkeys.h"
+
+#include <QtGlobal>
+#include <SDL.h>
+
+#ifdef Q_OS_WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#endif
+
+namespace
+{
+bool s_InForce = false;
+bool s_Focused = false;
+
+#ifdef Q_OS_WIN32
+
+HHOOK s_Hook = nullptr;
+
+// Which of Alt and Control a finger is holding, counted from the very
+// stream this is filtering.
+//
+// Bit one for Alt, bit two for Control, either side of the keyboard. Read
+// from the stream and not asked of the system: inside a low level hook the
+// system is being asked about a key it has not finished with, and what it
+// answers there is not a thing to rest a whole feature on.
+unsigned int s_Held = 0;
+
+// Which of Tab and Échap this program is holding down on the far
+// computer's behalf, one bit each.
+//
+// A key taken on the way down is taken on the way up as well, whatever has
+// happened in between. Left to the ordinary answer, a focus lost between
+// the two hands this computer a key released that it never saw pressed.
+unsigned int s_Carried = 0;
+
+// What the journal is owed, all of it read a moment later on a thread that
+// may write to a file. Nothing here writes: the system holds every
+// keystroke of the whole computer until this returns.
+unsigned int s_SeenTab[2] = { 0, 0 };
+unsigned int s_SeenAlt[2] = { 0, 0 };
+unsigned int s_Sent = 0;
+unsigned int s_PassedNoFocus = 0;
+unsigned int s_PassedPlain = 0;
+unsigned int s_PassedInjected = 0;
+unsigned int s_Told = 0;
+unsigned int s_Laid = 0;
+
+// Whether the system itself calls this keystroke one of its own, which for
+// every key but F10 means Alt was held with it.
+//
+// Free, cannot go stale, and above all cannot be lost: it comes with the
+// keystroke instead of being remembered from an earlier one. The stream is
+// kept beside it for Control, which no message name tells us about.
+bool theSystemCallsItItsOwn(WPARAM what)
+{
+    return what == WM_SYSKEYDOWN || what == WM_SYSKEYUP;
+}
+
+// Whether the system would act on this key itself rather than hand it over.
+//
+// Tab and Échap on their own are ordinary keys and are left alone: a
+// session where Tab moved nothing and Échap closed nothing would be a
+// session nobody can work in. It is the company they keep that makes them
+// the system's.
+bool theSystemWouldEatIt(DWORD key, WPARAM what)
+{
+    bool alt = theSystemCallsItItsOwn(what) || (s_Held & 1);
+    switch (key) {
+    case VK_TAB:
+        return alt;
+    case VK_ESCAPE:
+        return alt || (s_Held & 2);
+    default:
+        return false;
+    }
+}
+
+// The bit that remembers this key while it is held, or nought for a key
+// that is none of our business.
+unsigned int aKeyOfOurs(DWORD key)
+{
+    switch (key) {
+    case VK_TAB:
+        return 1;
+    case VK_ESCAPE:
+        return 2;
+    default:
+        return 0;
+    }
+}
+
+// Puts that key where every other key of this session goes.
+//
+// Pushed as one of the toolkit's own events rather than sent back out as a
+// keystroke: a keystroke sent back out would be read by the system first,
+// exactly as the one just taken was. The modifiers are read from the
+// toolkit, which has them right because Alt and Control are never
+// swallowed here and reach it as they always did.
+void handItOver(DWORD key, bool up)
+{
+    SDL_Event event;
+    SDL_zero(event);
+    event.type = up ? SDL_KEYUP : SDL_KEYDOWN;
+    event.key.timestamp = SDL_GetTicks();
+    event.key.state = up ? SDL_RELEASED : SDL_PRESSED;
+    event.key.repeat = 0;
+    event.key.keysym.scancode = key == VK_TAB ? SDL_SCANCODE_TAB : SDL_SCANCODE_ESCAPE;
+    event.key.keysym.sym = key == VK_TAB ? SDLK_TAB : SDLK_ESCAPE;
+    event.key.keysym.mod = SDL_GetModState();
+    SDL_PushEvent(&event);
+    if (!up) {
+        s_Sent++;
+    }
+}
+
+LRESULT CALLBACK zyrKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
+{
+    if (nCode != HC_ACTION) {
+        return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+
+    const KBDLLHOOKSTRUCT* key = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+    const bool up = wParam == WM_KEYUP || wParam == WM_SYSKEYUP;
+
+    // Fingers only. A keystroke another program sent, ZyrDesk's own
+    // floating menu included, is not a finger on a key, and letting it
+    // drive what Alt is doing had this contradict the hand in front of it.
+    const bool aFinger = (key->flags & LLKHF_INJECTED) == 0;
+    if (aFinger) {
+        switch (key->vkCode) {
+        case VK_MENU:
+        case VK_LMENU:
+        case VK_RMENU:
+            s_Held = up ? (s_Held & ~1u) : (s_Held | 1u);
+            s_SeenAlt[up ? 1 : 0]++;
+            break;
+        case VK_CONTROL:
+        case VK_LCONTROL:
+        case VK_RCONTROL:
+            s_Held = up ? (s_Held & ~2u) : (s_Held | 2u);
+            break;
+        case VK_TAB:
+            s_SeenTab[up ? 1 : 0]++;
+            break;
+        default:
+            break;
+        }
+    }
+
+    // Alt, Control, Shift and the Windows key are never swallowed, and
+    // that is the whole of how ZyrDesk keeps its own shortcuts: they are
+    // held through the system's own registration, which is served after
+    // this hook and never sees a key taken here.
+    const unsigned int bit = aKeyOfOurs(key->vkCode);
+    if (bit == 0) {
+        return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+
+    if (up && (s_Carried & bit)) {
+        // Taken on the way down, so taken on the way up, wherever the
+        // focus has gone in between.
+        s_Carried &= ~bit;
+        handItOver(key->vkCode, true);
+        return 1;
+    }
+
+    if (!aFinger) {
+        s_PassedInjected++;
+        return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+    if (!s_Focused) {
+        s_PassedNoFocus++;
+        return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+    if (up || !theSystemWouldEatIt(key->vkCode, wParam)) {
+        s_PassedPlain++;
+        return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+
+    s_Carried |= bit;
+    handItOver(key->vkCode, false);
+    return 1;
+}
+
+// Lays the hook, taking the old one off first so this one is the newest of
+// the chain again; see the header.
+void layItAgain()
+{
+    if (s_Hook != nullptr) {
+        UnhookWindowsHookEx(s_Hook);
+        s_Hook = nullptr;
+    }
+    s_Hook = SetWindowsHookEx(WH_KEYBOARD_LL, zyrKeyboardHookProc, GetModuleHandle(nullptr), 0);
+    s_Laid++;
+    if (s_Hook == nullptr) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "zyr: Windows refused the system key hook (error %lu)",
+                    GetLastError());
+    }
+}
+
+// Takes it off, and gives back whatever it was holding down.
+//
+// The far computer is told first: a session that keeps a Tab down because
+// the focus left between the press and the release goes on believing it,
+// and every key after it arrives there with a Tab held.
+void takeItOff()
+{
+    for (DWORD key : { VK_TAB, VK_ESCAPE }) {
+        unsigned int bit = aKeyOfOurs(key);
+        if (s_Carried & bit) {
+            s_Carried &= ~bit;
+            handItOver(key, true);
+        }
+    }
+    if (s_Hook != nullptr) {
+        UnhookWindowsHookEx(s_Hook);
+        s_Hook = nullptr;
+    }
+}
+
+#endif
+}
+
+void ZyrSystemKeys::setInForce(bool inForce)
+{
+    s_InForce = inForce;
+    if (inForce) {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "zyr: system keys are this engine's, and this computer keeps Alt, Control and the Windows key");
+    }
+}
+
+bool ZyrSystemKeys::inForce()
+{
+    return s_InForce;
+}
+
+void ZyrSystemKeys::focusChanged(bool focused)
+{
+    if (!s_InForce) {
+        return;
+    }
+    s_Focused = focused;
+#ifdef Q_OS_WIN32
+    if (focused) {
+        layItAgain();
+    }
+    else {
+        takeItOff();
+    }
+#endif
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "zyr: the session %s the keyboard",
+                focused ? "has" : "has lost");
+}
+
+void ZyrSystemKeys::letGo()
+{
+    if (!s_InForce) {
+        return;
+    }
+    s_Focused = false;
+#ifdef Q_OS_WIN32
+    takeItOff();
+    tell();
+    s_Held = 0;
+    s_SeenTab[0] = s_SeenTab[1] = 0;
+    s_SeenAlt[0] = s_SeenAlt[1] = 0;
+    s_Sent = 0;
+    s_PassedNoFocus = 0;
+    s_PassedPlain = 0;
+    s_PassedInjected = 0;
+    s_Told = 0;
+    s_Laid = 0;
+#endif
+}
+
+void ZyrSystemKeys::tell()
+{
+#ifdef Q_OS_WIN32
+    if (!s_InForce || s_Told == s_Sent + s_PassedNoFocus + s_PassedPlain + s_PassedInjected) {
+        return;
+    }
+    s_Told = s_Sent + s_PassedNoFocus + s_PassedPlain + s_PassedInjected;
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "zyr: system keys: Tab %u down %u up, Alt %u down %u up ; "
+                "%u carried to the host ; passed: %u without the keyboard, %u plain, %u injected ; "
+                "hook laid %u times, keyboard %s, holding %u",
+                s_SeenTab[0], s_SeenTab[1], s_SeenAlt[0], s_SeenAlt[1],
+                s_Sent, s_PassedNoFocus, s_PassedPlain, s_PassedInjected,
+                s_Laid, s_Focused ? "here" : "elsewhere", s_Carried);
+#endif
+}

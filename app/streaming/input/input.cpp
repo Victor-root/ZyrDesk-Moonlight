@@ -2,6 +2,7 @@
 #include <SDL.h>
 #include "streaming/session.h"
 #include "settings/mappingmanager.h"
+#include "streaming/input/zyrsystemkeys.h"
 #include "path.h"
 #include "utils.h"
 
@@ -38,6 +39,11 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     if (!WMUtils::isRunningDesktopEnvironment()) {
         m_CaptureSystemKeysMode = StreamingPreferences::CSK_ALWAYS;
     }
+
+    // zyr: in this mode the system's keys are taken here rather than by
+    // the program that carries this window, and taken from the focus
+    // rather than from the front; see streaming/input/zyrsystemkeys.h.
+    ZyrSystemKeys::setInForce(m_CaptureSystemKeysMode == StreamingPreferences::CSK_ZYRDESK);
 
     // Allow gamepad input when the app doesn't have focus if requested
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, prefs.backgroundGamepad ? "1" : "0");
@@ -194,6 +200,10 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
 
 SdlInputHandler::~SdlInputHandler()
 {
+    // zyr: before anything else, so a key held on the far computer's
+    // behalf is given back while there is still a session to give it to.
+    ZyrSystemKeys::letGo();
+
     for (int i = 0; i < MAX_GAMEPADS; i++) {
         if (m_GamepadState[i].mouseEmulationTimer != 0) {
             Session::get()->notifyMouseEmulationMode(false);
@@ -293,6 +303,10 @@ void SdlInputHandler::notifyFocusLost()
         setCaptureActive(false);
     }
 
+    // zyr: and the system's keys go back to this computer for as long as
+    // the session has not got the keyboard back.
+    ZyrSystemKeys::focusChanged(false);
+
     // Raise all keys that are currently pressed. If we don't do this, certain keys
     // used in shortcuts that cause focus loss (such as Alt+Tab) may get stuck down.
     raiseAllKeys();
@@ -311,6 +325,15 @@ bool SdlInputHandler::isCaptureActive()
 void SdlInputHandler::updateKeyboardGrabState()
 {
     if (m_CaptureSystemKeysMode == StreamingPreferences::CSK_OFF) {
+        return;
+    }
+
+    // zyr: the toolkit's own grab swallows Alt and Control whole, and every
+    // shortcut of the program that carries this window is an Alt
+    // combination held through the system's own registration, which never
+    // sees a swallowed key. This mode keeps that grab off and takes Tab and
+    // Échap alone; see streaming/input/zyrsystemkeys.h.
+    if (m_CaptureSystemKeysMode == StreamingPreferences::CSK_ZYRDESK) {
         return;
     }
 

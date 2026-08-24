@@ -102,6 +102,11 @@ public:
         CSK_OFF,
         CSK_FULLSCREEN,
         CSK_ALWAYS,
+        // zyr: the system's keys are this engine's, taken from the focus
+        // rather than from the front, and Alt, Control and the Windows key
+        // are left alone so the program that carries this window keeps its
+        // own shortcuts; see streaming/input/zyrsystemkeys.h.
+        CSK_ZYRDESK,
     };
     Q_ENUM(CaptureSysKeysMode);
 

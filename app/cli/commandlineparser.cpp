@@ -322,6 +322,7 @@ StreamCommandLineParser::StreamCommandLineParser()
         {"never",      StreamingPreferences::CSK_OFF},
         {"fullscreen", StreamingPreferences::CSK_FULLSCREEN},
         {"always",     StreamingPreferences::CSK_ALWAYS},
+        {"zyrdesk",    StreamingPreferences::CSK_ZYRDESK},
     };
 }
 

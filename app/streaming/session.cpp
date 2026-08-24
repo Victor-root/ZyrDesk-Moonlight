@@ -1,4 +1,5 @@
 #include "session.h"
+#include "streaming/input/zyrsystemkeys.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
@@ -2112,6 +2113,12 @@ void Session::execInternal()
                 if (m_Preferences->muteOnFocusLoss) {
                     m_AudioMuted = false;
                 }
+                // zyr: and the system's keys are this session's again. The
+                // hook is laid afresh here rather than merely switched on:
+                // the system serves these newest first, and whatever was
+                // installed while the keyboard was elsewhere is served
+                // before an older one.
+                ZyrSystemKeys::focusChanged(true);
                 break;
             case SDL_WINDOWEVENT_LEAVE:
                 m_InputHandler->notifyMouseLeave();
@@ -2307,6 +2314,10 @@ void Session::execInternal()
         case SDL_KEYDOWN:
             presence.runCallbacks();
             m_InputHandler->handleKeyEvent(&event.key);
+            // zyr: written here rather than from the hook, which is the one
+            // road every keystroke of this computer travels and where
+            // nothing may write to a file.
+            ZyrSystemKeys::tell();
             break;
         case SDL_MOUSEBUTTONDOWN:
         case SDL_MOUSEBUTTONUP:
