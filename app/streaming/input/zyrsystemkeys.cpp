@@ -120,6 +120,30 @@ void handItOver(DWORD key, bool up)
     }
 }
 
+// Whether a keystroke typed right now would really come to this window.
+//
+// The focus and the front are two different things and this needs both.
+// The program that carries this window joins its input to this one's and
+// hands the focus back to the picture at every turn of its watch, and that
+// succeeds whatever holds the front; so the focus alone answers yes while
+// somebody is working in another program of this computer. A session did
+// exactly that, and swallowed seventeen Alt+Tab meant for a window here.
+//
+// Asked as one question rather than as two answers compared: what the
+// system gives back is the window that holds the keyboard inside the input
+// the front belongs to, which is the whole of what is being asked. It is a
+// reading of what the system already knows and waits on nobody, and it is
+// asked only of Tab and Échap, which are rare.
+bool theKeyboardIsReallyOurs()
+{
+    GUITHREADINFO front;
+    front.cbSize = sizeof(front);
+    if (!GetGUIThreadInfo(0, &front)) {
+        return false;
+    }
+    return front.hwndFocus == s_Window;
+}
+
 LRESULT CALLBACK zyrKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 {
     if (nCode != HC_ACTION) {
@@ -175,7 +199,7 @@ LRESULT CALLBACK zyrKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
         s_PassedInjected++;
         return CallNextHookEx(nullptr, nCode, wParam, lParam);
     }
-    if (!s_Focused) {
+    if (!s_Focused || !theKeyboardIsReallyOurs()) {
         s_PassedNoFocus++;
         return CallNextHookEx(nullptr, nCode, wParam, lParam);
     }
