@@ -17,6 +17,11 @@ bool s_Focused = false;
 
 HHOOK s_Hook = nullptr;
 
+// The window this watches, and the handler it had before, so the messages
+// it is watched through go on being answered as they always were.
+HWND s_Window = nullptr;
+WNDPROC s_TheirProc = nullptr;
+
 // Which of Alt and Control a finger is holding, counted from the very
 // stream this is filtering.
 //
@@ -45,6 +50,7 @@ unsigned int s_PassedPlain = 0;
 unsigned int s_PassedInjected = 0;
 unsigned int s_Told = 0;
 unsigned int s_Laid = 0;
+unsigned int s_Comings = 0;
 
 // Whether the system itself calls this keystroke one of its own, which for
 // every key but F10 means Alt was held with it.
@@ -183,6 +189,25 @@ LRESULT CALLBACK zyrKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
     return 1;
 }
 
+void keyboardIsHere(bool here);
+
+// Steps in front of this window's own messages, for the two that say the
+// keyboard has come and gone.
+//
+// Both are sent to the window that gains or loses it, whatever holds the
+// front, so they say the one thing that matters here and the toolkit's own
+// reading cannot; see the header.
+LRESULT CALLBACK zyrWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    if (message == WM_SETFOCUS) {
+        keyboardIsHere(true);
+    }
+    else if (message == WM_KILLFOCUS) {
+        keyboardIsHere(false);
+    }
+    return CallWindowProcW(s_TheirProc, window, message, wParam, lParam);
+}
+
 // Lays the hook, taking the old one off first so this one is the newest of
 // the chain again; see the header.
 void layItAgain()
@@ -191,7 +216,7 @@ void layItAgain()
         UnhookWindowsHookEx(s_Hook);
         s_Hook = nullptr;
     }
-    s_Hook = SetWindowsHookEx(WH_KEYBOARD_LL, zyrKeyboardHookProc, GetModuleHandle(nullptr), 0);
+    s_Hook = SetWindowsHookExW(WH_KEYBOARD_LL, zyrKeyboardHookProc, GetModuleHandleW(nullptr), 0);
     s_Laid++;
     if (s_Hook == nullptr) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
@@ -220,6 +245,31 @@ void takeItOff()
     }
 }
 
+// The keyboard has come to this window, or left it.
+//
+// Coming lays the hook again, and that is not tidiness: the system serves
+// these newest first, and whatever another program laid while the keyboard
+// was elsewhere is served before an older one. A window resized, a full
+// screen entered, a menu opened: each of those is a leaving and a coming,
+// so each of them puts this back at the head.
+void keyboardIsHere(bool here)
+{
+    if (here == s_Focused) {
+        return;
+    }
+    s_Focused = here;
+    if (here) {
+        s_Comings++;
+        layItAgain();
+    }
+    else {
+        takeItOff();
+    }
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "zyr: the session %s the keyboard",
+                here ? "has" : "has lost");
+}
+
 #endif
 }
 
@@ -237,23 +287,37 @@ bool ZyrSystemKeys::inForce()
     return s_InForce;
 }
 
-void ZyrSystemKeys::focusChanged(bool focused)
+void ZyrSystemKeys::watch(void* window)
 {
-    if (!s_InForce) {
+    if (!s_InForce || window == nullptr) {
         return;
     }
-    s_Focused = focused;
 #ifdef Q_OS_WIN32
-    if (focused) {
-        layItAgain();
+    if (s_Window == reinterpret_cast<HWND>(window)) {
+        return;
     }
-    else {
-        takeItOff();
-    }
+    stopWatching();
+    s_Window = reinterpret_cast<HWND>(window);
+    s_TheirProc = reinterpret_cast<WNDPROC>(
+        SetWindowLongPtrW(s_Window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(zyrWindowProc)));
+    // Where it stands right now, nothing being said about it until it next
+    // moves. The window is asked of the input this program shares with the
+    // one that carries it, which is the only place that answer lives.
+    keyboardIsHere(GetFocus() == s_Window);
 #endif
-    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                "zyr: the session %s the keyboard",
-                focused ? "has" : "has lost");
+}
+
+void ZyrSystemKeys::stopWatching()
+{
+#ifdef Q_OS_WIN32
+    if (s_Window == nullptr) {
+        return;
+    }
+    keyboardIsHere(false);
+    SetWindowLongPtrW(s_Window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(s_TheirProc));
+    s_Window = nullptr;
+    s_TheirProc = nullptr;
+#endif
 }
 
 void ZyrSystemKeys::letGo()
@@ -261,9 +325,8 @@ void ZyrSystemKeys::letGo()
     if (!s_InForce) {
         return;
     }
-    s_Focused = false;
 #ifdef Q_OS_WIN32
-    takeItOff();
+    stopWatching();
     tell();
     s_Held = 0;
     s_SeenTab[0] = s_SeenTab[1] = 0;
@@ -274,6 +337,7 @@ void ZyrSystemKeys::letGo()
     s_PassedInjected = 0;
     s_Told = 0;
     s_Laid = 0;
+    s_Comings = 0;
 #endif
 }
 
@@ -287,9 +351,9 @@ void ZyrSystemKeys::tell()
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "zyr: system keys: Tab %u down %u up, Alt %u down %u up ; "
                 "%u carried to the host ; passed: %u without the keyboard, %u plain, %u injected ; "
-                "hook laid %u times, keyboard %s, holding %u",
+                "hook laid %u times over %u comings of the keyboard, keyboard %s, holding %u",
                 s_SeenTab[0], s_SeenTab[1], s_SeenAlt[0], s_SeenAlt[1],
                 s_Sent, s_PassedNoFocus, s_PassedPlain, s_PassedInjected,
-                s_Laid, s_Focused ? "here" : "elsewhere", s_Carried);
+                s_Laid, s_Comings, s_Focused ? "here" : "elsewhere", s_Carried);
 #endif
 }

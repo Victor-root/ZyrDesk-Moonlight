@@ -2113,12 +2113,6 @@ void Session::execInternal()
                 if (m_Preferences->muteOnFocusLoss) {
                     m_AudioMuted = false;
                 }
-                // zyr: and the system's keys are this session's again. The
-                // hook is laid afresh here rather than merely switched on:
-                // the system serves these newest first, and whatever was
-                // installed while the keyboard was elsewhere is served
-                // before an older one.
-                ZyrSystemKeys::focusChanged(true);
                 break;
             case SDL_WINDOWEVENT_LEAVE:
                 m_InputHandler->notifyMouseLeave();

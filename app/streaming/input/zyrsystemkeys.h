@@ -38,9 +38,22 @@ public:
     static void setInForce(bool inForce);
     static bool inForce();
 
-    // The session's window has gained or lost the keyboard. Gaining lays
-    // the hook again; losing takes it off and raises what it holds.
-    static void focusChanged(bool focused);
+    // Watches this window for the keyboard coming and going.
+    //
+    // Watched at the window itself, and this is the whole of what one
+    // round cost. The toolkit decides it has the keyboard by comparing its
+    // own window with the one the system calls the front, and this window
+    // is carried inside another program's for the length of a session,
+    // which makes it a child; the system gives the front to the head of a
+    // family and never to a member of it. So the toolkit says the keyboard
+    // is gone the first time it goes and can never say it is back, and the
+    // journal caught exactly that: five keys carried, the keyboard lost
+    // when a menu opened, and not one word for the twenty seconds after.
+    //
+    // The system tells this window itself, in two messages that owe
+    // nothing to the front. Those are what is read.
+    static void watch(void* window);
+    static void stopWatching();
 
     // The session is over.
     static void letGo();

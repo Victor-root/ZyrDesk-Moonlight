@@ -1,5 +1,6 @@
 #include <Limelight.h>
 #include <SDL.h>
+#include <SDL_syswm.h>
 #include "streaming/session.h"
 #include "settings/mappingmanager.h"
 #include "streaming/input/zyrsystemkeys.h"
@@ -254,6 +255,20 @@ SdlInputHandler::~SdlInputHandler()
 void SdlInputHandler::setWindow(SDL_Window *window)
 {
     m_Window = window;
+
+    // zyr: the system's keys follow this window's own keyboard, which the
+    // toolkit cannot report for a window carried inside another program's;
+    // see streaming/input/zyrsystemkeys.h.
+    if (window != nullptr) {
+        SDL_SysWMinfo info;
+        SDL_VERSION(&info.version);
+        if (SDL_GetWindowWMInfo(window, &info) && info.subsystem == SDL_SYSWM_WINDOWS) {
+            ZyrSystemKeys::watch(info.info.win.window);
+        }
+    }
+    else {
+        ZyrSystemKeys::stopWatching();
+    }
 }
 
 void SdlInputHandler::raiseAllKeys()
@@ -302,10 +317,6 @@ void SdlInputHandler::notifyFocusLost()
     if (!(SDL_GetWindowFlags(m_Window) & SDL_WINDOW_FULLSCREEN) && !m_AbsoluteMouseMode) {
         setCaptureActive(false);
     }
-
-    // zyr: and the system's keys go back to this computer for as long as
-    // the session has not got the keyboard back.
-    ZyrSystemKeys::focusChanged(false);
 
     // Raise all keys that are currently pressed. If we don't do this, certain keys
     // used in shortcuts that cause focus loss (such as Alt+Tab) may get stuck down.
