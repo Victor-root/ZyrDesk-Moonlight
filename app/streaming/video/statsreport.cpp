@@ -51,9 +51,14 @@ void StatsReport::write(const VIDEO_STATS& stats,
     QString line;
     line += QString("codec=%1 ").arg(codec);
     line += QString("width=%1 height=%2 ").arg(width).arg(height);
+    // Worked out here from the frames and the seconds they came over,
+    // rather than read out of the window handed in: the rates a window
+    // carries are only ever filled by the routine that merges two of
+    // them into a third, and the one that has just closed holds nought
+    // in them.
     line += QString("fps=%1 ")
-                .arg(stats.receivedFps > 0 ? QString::number(stats.receivedFps, 'f', 1)
-                                           : QString());
+                .arg(over <= 0 ? QString()
+                               : QString::number(stats.receivedFrames / over, 'f', 1));
     // The four the person watches. Decoding and rendering are this
     // computer's, the host's own time is the far one's, and the round trip
     // is what lies between them.
@@ -62,10 +67,22 @@ void StatsReport::write(const VIDEO_STATS& stats,
     line += QString("host_ms=%1 ")
                 .arg(each((double)stats.totalHostProcessingLatency / 10,
                           stats.framesWithHostProcessingLatency));
-    line += QString("network_ms=%1 ").arg(stats.lastRtt == 0 ? QString()
-                                                             : QString::number(stats.lastRtt));
+    // The round trip is asked of the connection here rather than read out
+    // of the window handed in, and that is not a preference. It is a live
+    // reading and not something a window accumulates: nothing ever writes
+    // it into one, and the only place it is ever set is the routine that
+    // merges two windows into a third. The overlay reads it because it
+    // draws such a merge; a window that has just closed carries a nought
+    // there whatever the link is really doing, and a nought reads as no
+    // measurement at all.
+    uint32_t rtt = 0;
+    uint32_t rttVariance = 0;
+    if (!LiGetEstimatedRttInfo(&rtt, &rttVariance)) {
+        rtt = 0;
+    }
+    line += QString("network_ms=%1 ").arg(rtt == 0 ? QString() : QString::number(rtt));
     line += QString("network_variance_ms=%1 ")
-                .arg(stats.lastRtt == 0 ? QString() : QString::number(stats.lastRttVariance));
+                .arg(rtt == 0 ? QString() : QString::number(rttVariance));
     // What actually came down the wire, rather than what was asked for:
     // the two part company on a link that cannot carry the ask, and it is
     // the first that says why a picture looks the way it does.
