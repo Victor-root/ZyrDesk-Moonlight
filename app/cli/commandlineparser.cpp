@@ -3,6 +3,8 @@
 #include <QCommandLineParser>
 #include <QRegularExpression>
 
+#include "streaming/video/statsreport.h"
+
 static bool inRange(int value, int min, int max)
 {
     return value >= min && value <= max;
@@ -352,6 +354,7 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     parser.addToggleOption("vsync", "V-Sync");
     parser.addValueOption("fps", "FPS");
     parser.addValueOption("bitrate", "bitrate in Kbps");
+    parser.addValueOption("report-stats", "file to write a machine readable line of session statistics to, replaced once a second");
     parser.addValueOption("packet-size", "video packet size");
     parser.addChoiceOption("display-mode", "display mode", m_WindowModeMap.keys());
     parser.addChoiceOption("audio-config", "audio config", m_AudioConfigMap.keys());
@@ -494,6 +497,11 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     // Resolve --yuv444 and --no-yuv444 options
     preferences->enableYUV444 = parser.getToggleOptionValue("yuv444", preferences->enableYUV444);
     
+    // Resolve --report-stats option
+    if (parser.isSet("report-stats")) {
+        StatsReport::reportTo(parser.value("report-stats"));
+    }
+
     // Resolve --capture-system-keys option
     if (parser.isSet("capture-system-keys")) {
         preferences->captureSysKeysMode = mapValue(m_CaptureSysKeysModeMap, parser.getChoiceOptionValue("capture-system-keys"));

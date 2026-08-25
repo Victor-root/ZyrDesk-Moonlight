@@ -1,5 +1,6 @@
 #include <Limelight.h>
 #include "ffmpeg.h"
+#include "statsreport.h"
 #include "streaming/session.h"
 
 #include <h264_stream.h>
@@ -660,6 +661,7 @@ void FFmpegVideoDecoder::addVideoStats(VIDEO_STATS& src, VIDEO_STATS& dst)
     dst.totalDecodeTime += src.totalDecodeTime;
     dst.totalPacerTime += src.totalPacerTime;
     dst.totalRenderTime += src.totalRenderTime;
+    dst.totalBytes += src.totalBytes;
 
     if (dst.minHostProcessingLatency == 0) {
         dst.minHostProcessingLatency = src.minHostProcessingLatency;
@@ -697,14 +699,15 @@ void FFmpegVideoDecoder::addVideoStats(VIDEO_STATS& src, VIDEO_STATS& dst)
     dst.renderedFps = (float)dst.renderedFrames / ((float)(now - dst.measurementStartTimestamp) / 1000);
 }
 
-void FFmpegVideoDecoder::stringifyVideoStats(VIDEO_STATS& stats, char* output, int length)
+// What this session's pictures are coded as, in the words a person reads.
+//
+// Pulled out of the line the overlay draws so the same words reach a
+// caller asking for the numbers: two tables would answer differently the
+// first time a format is added, and the one nobody looks at would be the
+// wrong one.
+const char* FFmpegVideoDecoder::videoFormatName()
 {
-    int offset = 0;
     const char* codecString;
-    int ret;
-
-    // Start with an empty string
-    output[offset] = 0;
 
     switch (m_VideoFormat)
     {
@@ -773,6 +776,19 @@ void FFmpegVideoDecoder::stringifyVideoStats(VIDEO_STATS& stats, char* output, i
         codecString = "UNKNOWN";
         break;
     }
+
+    return codecString;
+}
+
+void FFmpegVideoDecoder::stringifyVideoStats(VIDEO_STATS& stats, char* output, int length)
+{
+    int offset = 0;
+    int ret;
+
+    // Start with an empty string
+    output[offset] = 0;
+
+    const char* codecString = videoFormatName();
 
     if (stats.receivedFps > 0) {
         if (m_VideoDecoderCtx != nullptr) {
@@ -1765,6 +1781,18 @@ int FFmpegVideoDecoder::submitDecodeUnit(PDECODE_UNIT du)
             Session::get()->getOverlayManager().setOverlayTextUpdated(Overlay::OverlayDebug);
         }
 
+        // And the same reading for whoever started this engine, when they
+        // asked for it. The window that has just closed rather than the
+        // two the overlay averages: a caller drawing this a second at a
+        // time wants the second that just passed, not a value smoothed
+        // across two.
+        if (StatsReport::wanted()) {
+            StatsReport::write(m_ActiveWndVideoStats,
+                               videoFormatName(),
+                               m_VideoDecoderCtx != nullptr ? m_VideoDecoderCtx->width : 0,
+                               m_VideoDecoderCtx != nullptr ? m_VideoDecoderCtx->height : 0);
+        }
+
         // Accumulate these values into the global stats
         addVideoStats(m_ActiveWndVideoStats, m_GlobalVideoStats);
 
@@ -1788,6 +1816,7 @@ int FFmpegVideoDecoder::submitDecodeUnit(PDECODE_UNIT du)
 
     m_ActiveWndVideoStats.receivedFrames++;
     m_ActiveWndVideoStats.totalFrames++;
+    m_ActiveWndVideoStats.totalBytes += du->fullLength;
 
     int requiredBufferSize = du->fullLength;
     if (du->frameType == FRAME_TYPE_IDR) {

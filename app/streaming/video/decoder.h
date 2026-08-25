@@ -30,6 +30,9 @@ typedef struct _VIDEO_STATS {
     float decodedFps;
     float renderedFps;
     uint32_t measurementStartTimestamp;
+    // What the wire actually carried over the window, which is the one
+    // number a person compares with the rate they asked for.
+    uint64_t totalBytes;
 } VIDEO_STATS, *PVIDEO_STATS;
 
 typedef struct _DECODER_PARAMETERS {
