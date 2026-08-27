@@ -141,13 +141,16 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         break;
 
     case KeyComboToggleSystemKeys:
-        // zyr: Alt+Tab, Échap and the Windows key change hands. Every key
-        // held on the far computer's behalf is given back on the way, so
-        // one pressed on one side of the switch and released on the other
-        // does not stay down over there.
+        // zyr: Alt+Tab, Échap, the Windows key and the screen key change
+        // hands. Every key held on the far computer's behalf is given
+        // back on the way, so one pressed on one side of the switch and
+        // released on the other does not stay down over there. And the
+        // toolkit is told again about Alt+F4, which is the one of these
+        // it acts on itself.
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                     "Detected system keys toggle combo");
         ZyrSystemKeys::setTaking(!ZyrSystemKeys::taking());
+        updateKeyboardGrabState();
         break;
 
     default:

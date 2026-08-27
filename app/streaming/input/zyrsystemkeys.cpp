@@ -64,10 +64,11 @@ const struct
     SDL_Scancode where;
     SDL_Keycode name;
 } OURS[] = {
-    { VK_TAB,    1, SDL_SCANCODE_TAB,    SDLK_TAB },
-    { VK_ESCAPE, 2, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE },
-    { VK_LWIN,   4, SDL_SCANCODE_LGUI,   SDLK_LGUI },
-    { VK_RWIN,   8, SDL_SCANCODE_RGUI,   SDLK_RGUI },
+    { VK_TAB,      1, SDL_SCANCODE_TAB,         SDLK_TAB },
+    { VK_ESCAPE,   2, SDL_SCANCODE_ESCAPE,      SDLK_ESCAPE },
+    { VK_LWIN,     4, SDL_SCANCODE_LGUI,        SDLK_LGUI },
+    { VK_RWIN,     8, SDL_SCANCODE_RGUI,        SDLK_RGUI },
+    { VK_SNAPSHOT, 16, SDL_SCANCODE_PRINTSCREEN, SDLK_PRINTSCREEN },
 };
 
 // Whether the system itself calls this keystroke one of its own, which for
@@ -86,8 +87,9 @@ bool theSystemCallsItItsOwn(WPARAM what)
 // Tab and Échap on their own are ordinary keys and are left alone: a
 // session where Tab moved nothing and Échap closed nothing would be a
 // session nobody can work in. It is the company they keep that makes them
-// the system's. The Windows key keeps no company: the system takes it
-// alone, and takes it again with whatever follows it.
+// the system's. The Windows key and the screen key keep no company: the
+// system takes each of them alone, and takes the Windows key again with
+// whatever follows it.
 bool theSystemWouldEatIt(DWORD key, WPARAM what)
 {
     bool alt = theSystemCallsItItsOwn(what) || (s_Held & 1);
@@ -98,6 +100,7 @@ bool theSystemWouldEatIt(DWORD key, WPARAM what)
         return alt || (s_Held & 2);
     case VK_LWIN:
     case VK_RWIN:
+    case VK_SNAPSHOT:
         return true;
     default:
         return false;

@@ -354,6 +354,13 @@ void SdlInputHandler::updateKeyboardGrabState()
     // Échap and the Windows key alone; see
     // streaming/input/zyrsystemkeys.h.
     if (zyrOwnsSystemKeys()) {
+        // Alt+F4 is the one of these the system hands over and the
+        // toolkit takes: it closes this window rather than travelling,
+        // which for a session is the far computer's app being spared and
+        // the session itself going instead. So the toolkit is told to
+        // leave it alone for exactly as long as the switch is on.
+        SDL_SetHint(SDL_HINT_WINDOWS_NO_CLOSE_ON_ALT_F4,
+                    ZyrSystemKeys::taking() ? "1" : "0");
         return;
     }
 
