@@ -10,7 +10,8 @@
 
 namespace
 {
-bool s_InForce = false;
+bool s_Ours = false;
+bool s_Taking = false;
 bool s_Focused = false;
 
 #ifdef Q_OS_WIN32
@@ -31,7 +32,7 @@ WNDPROC s_TheirProc = nullptr;
 // answers there is not a thing to rest a whole feature on.
 unsigned int s_Held = 0;
 
-// Which of Tab and Échap this program is holding down on the far
+// Which of the keys below this program is holding down on the far
 // computer's behalf, one bit each.
 //
 // A key taken on the way down is taken on the way up as well, whatever has
@@ -44,13 +45,30 @@ unsigned int s_Carried = 0;
 // keystroke of the whole computer until this returns.
 unsigned int s_SeenTab[2] = { 0, 0 };
 unsigned int s_SeenAlt[2] = { 0, 0 };
+unsigned int s_SeenWindows[2] = { 0, 0 };
 unsigned int s_Sent = 0;
+unsigned int s_PassedNotTaking = 0;
 unsigned int s_PassedNoFocus = 0;
 unsigned int s_PassedPlain = 0;
 unsigned int s_PassedInjected = 0;
 unsigned int s_Told = 0;
 unsigned int s_Laid = 0;
 unsigned int s_Comings = 0;
+
+// The keys this steps in front of, and the bit that remembers each one
+// while it is held.
+const struct
+{
+    DWORD key;
+    unsigned int bit;
+    SDL_Scancode where;
+    SDL_Keycode name;
+} OURS[] = {
+    { VK_TAB,    1, SDL_SCANCODE_TAB,    SDLK_TAB },
+    { VK_ESCAPE, 2, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE },
+    { VK_LWIN,   4, SDL_SCANCODE_LGUI,   SDLK_LGUI },
+    { VK_RWIN,   8, SDL_SCANCODE_RGUI,   SDLK_RGUI },
+};
 
 // Whether the system itself calls this keystroke one of its own, which for
 // every key but F10 means Alt was held with it.
@@ -68,7 +86,8 @@ bool theSystemCallsItItsOwn(WPARAM what)
 // Tab and Échap on their own are ordinary keys and are left alone: a
 // session where Tab moved nothing and Échap closed nothing would be a
 // session nobody can work in. It is the company they keep that makes them
-// the system's.
+// the system's. The Windows key keeps no company: the system takes it
+// alone, and takes it again with whatever follows it.
 bool theSystemWouldEatIt(DWORD key, WPARAM what)
 {
     bool alt = theSystemCallsItItsOwn(what) || (s_Held & 1);
@@ -77,6 +96,9 @@ bool theSystemWouldEatIt(DWORD key, WPARAM what)
         return alt;
     case VK_ESCAPE:
         return alt || (s_Held & 2);
+    case VK_LWIN:
+    case VK_RWIN:
+        return true;
     default:
         return false;
     }
@@ -86,14 +108,12 @@ bool theSystemWouldEatIt(DWORD key, WPARAM what)
 // that is none of our business.
 unsigned int aKeyOfOurs(DWORD key)
 {
-    switch (key) {
-    case VK_TAB:
-        return 1;
-    case VK_ESCAPE:
-        return 2;
-    default:
-        return 0;
+    for (const auto& ours : OURS) {
+        if (ours.key == key) {
+            return ours.bit;
+        }
     }
+    return 0;
 }
 
 // Puts that key where every other key of this session goes.
@@ -101,22 +121,28 @@ unsigned int aKeyOfOurs(DWORD key)
 // Pushed as one of the toolkit's own events rather than sent back out as a
 // keystroke: a keystroke sent back out would be read by the system first,
 // exactly as the one just taken was. The modifiers are read from the
-// toolkit, which has them right because Alt and Control are never
+// toolkit, which has them right because Alt, Control and Shift are never
 // swallowed here and reach it as they always did.
 void handItOver(DWORD key, bool up)
 {
-    SDL_Event event;
-    SDL_zero(event);
-    event.type = up ? SDL_KEYUP : SDL_KEYDOWN;
-    event.key.timestamp = SDL_GetTicks();
-    event.key.state = up ? SDL_RELEASED : SDL_PRESSED;
-    event.key.repeat = 0;
-    event.key.keysym.scancode = key == VK_TAB ? SDL_SCANCODE_TAB : SDL_SCANCODE_ESCAPE;
-    event.key.keysym.sym = key == VK_TAB ? SDLK_TAB : SDLK_ESCAPE;
-    event.key.keysym.mod = SDL_GetModState();
-    SDL_PushEvent(&event);
-    if (!up) {
-        s_Sent++;
+    for (const auto& ours : OURS) {
+        if (ours.key != key) {
+            continue;
+        }
+        SDL_Event event;
+        SDL_zero(event);
+        event.type = up ? SDL_KEYUP : SDL_KEYDOWN;
+        event.key.timestamp = SDL_GetTicks();
+        event.key.state = up ? SDL_RELEASED : SDL_PRESSED;
+        event.key.repeat = 0;
+        event.key.keysym.scancode = ours.where;
+        event.key.keysym.sym = ours.name;
+        event.key.keysym.mod = SDL_GetModState();
+        SDL_PushEvent(&event);
+        if (!up) {
+            s_Sent++;
+        }
+        return;
     }
 }
 
@@ -132,8 +158,7 @@ void handItOver(DWORD key, bool up)
 // Asked as one question rather than as two answers compared: what the
 // system gives back is the window that holds the keyboard inside the input
 // the front belongs to, which is the whole of what is being asked. It is a
-// reading of what the system already knows and waits on nobody, and it is
-// asked only of Tab and Échap, which are rare.
+// reading of what the system already knows and waits on nobody.
 bool theKeyboardIsReallyOurs()
 {
     GUITHREADINFO front;
@@ -173,15 +198,19 @@ LRESULT CALLBACK zyrKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
         case VK_TAB:
             s_SeenTab[up ? 1 : 0]++;
             break;
+        case VK_LWIN:
+        case VK_RWIN:
+            s_SeenWindows[up ? 1 : 0]++;
+            break;
         default:
             break;
         }
     }
 
-    // Alt, Control, Shift and the Windows key are never swallowed, and
-    // that is the whole of how ZyrDesk keeps its own shortcuts: they are
-    // held through the system's own registration, which is served after
-    // this hook and never sees a key taken here.
+    // Alt, Control and Shift are never swallowed, and that is the whole of
+    // how ZyrDesk keeps its own shortcuts: they are held through the
+    // system's own registration, which is served after this hook and never
+    // sees a key taken here.
     const unsigned int bit = aKeyOfOurs(key->vkCode);
     if (bit == 0) {
         return CallNextHookEx(nullptr, nCode, wParam, lParam);
@@ -189,12 +218,17 @@ LRESULT CALLBACK zyrKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 
     if (up && (s_Carried & bit)) {
         // Taken on the way down, so taken on the way up, wherever the
-        // focus has gone in between.
+        // focus has gone in between and whichever way the switch has been
+        // thrown since.
         s_Carried &= ~bit;
         handItOver(key->vkCode, true);
         return 1;
     }
 
+    if (!s_Taking) {
+        s_PassedNotTaking++;
+        return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
     if (!aFinger) {
         s_PassedInjected++;
         return CallNextHookEx(nullptr, nCode, wParam, lParam);
@@ -249,20 +283,25 @@ void layItAgain()
     }
 }
 
-// Takes it off, and gives back whatever it was holding down.
+// Gives back whatever is being held down on the far computer's behalf.
 //
 // The far computer is told first: a session that keeps a Tab down because
 // the focus left between the press and the release goes on believing it,
 // and every key after it arrives there with a Tab held.
-void takeItOff()
+void giveBackWhatIsHeld()
 {
-    for (DWORD key : { VK_TAB, VK_ESCAPE }) {
-        unsigned int bit = aKeyOfOurs(key);
-        if (s_Carried & bit) {
-            s_Carried &= ~bit;
-            handItOver(key, true);
+    for (const auto& ours : OURS) {
+        if (s_Carried & ours.bit) {
+            s_Carried &= ~ours.bit;
+            handItOver(ours.key, true);
         }
     }
+}
+
+// Takes the hook off, and gives back whatever it was holding down.
+void takeItOff()
+{
+    giveBackWhatIsHeld();
     if (s_Hook != nullptr) {
         UnhookWindowsHookEx(s_Hook);
         s_Hook = nullptr;
@@ -276,6 +315,13 @@ void takeItOff()
 // was elsewhere is served before an older one. A window resized, a full
 // screen entered, a menu opened: each of those is a leaving and a coming,
 // so each of them puts this back at the head.
+//
+// The keyboard decides this and the switch does not. A hook that came and
+// went with the switch would forget which modifiers a finger is holding
+// every time it came back, and would stop counting the keys it lets
+// through, which is the very count that says why a key did not travel.
+// What the switch decides is what the hook does with a key, not whether it
+// sees one.
 void keyboardIsHere(bool here)
 {
     if (here == s_Focused) {
@@ -297,23 +343,56 @@ void keyboardIsHere(bool here)
 #endif
 }
 
-void ZyrSystemKeys::setInForce(bool inForce)
+void ZyrSystemKeys::begin(bool ours, bool taking)
 {
-    s_InForce = inForce;
-    if (inForce) {
+    s_Ours = ours;
+    s_Taking = ours && taking;
+    if (ours) {
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "zyr: system keys are this engine's, and this computer keeps Alt, Control and the Windows key");
+                    "zyr: the system's keys are this engine's and it %s them for now; "
+                    "this computer keeps Alt, Control and Shift either way",
+                    s_Taking ? "takes" : "leaves");
     }
 }
 
-bool ZyrSystemKeys::inForce()
+bool ZyrSystemKeys::ours()
 {
-    return s_InForce;
+    return s_Ours;
+}
+
+void ZyrSystemKeys::setTaking(bool taking)
+{
+    if (!s_Ours || taking == s_Taking) {
+        return;
+    }
+    s_Taking = taking;
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "zyr: the system's keys now go to %s",
+                taking ? "the session" : "this computer");
+#ifdef Q_OS_WIN32
+    if (!taking) {
+        giveBackWhatIsHeld();
+    }
+#endif
+}
+
+bool ZyrSystemKeys::taking()
+{
+    return s_Taking;
+}
+
+bool ZyrSystemKeys::hasTheKeyboard()
+{
+#ifdef Q_OS_WIN32
+    return s_Ours && s_Taking && s_Focused && theKeyboardIsReallyOurs();
+#else
+    return false;
+#endif
 }
 
 void ZyrSystemKeys::watch(void* window)
 {
-    if (!s_InForce || window == nullptr) {
+    if (!s_Ours || window == nullptr) {
         return;
     }
 #ifdef Q_OS_WIN32
@@ -346,7 +425,7 @@ void ZyrSystemKeys::stopWatching()
 
 void ZyrSystemKeys::letGo()
 {
-    if (!s_InForce) {
+    if (!s_Ours) {
         return;
     }
 #ifdef Q_OS_WIN32
@@ -355,7 +434,9 @@ void ZyrSystemKeys::letGo()
     s_Held = 0;
     s_SeenTab[0] = s_SeenTab[1] = 0;
     s_SeenAlt[0] = s_SeenAlt[1] = 0;
+    s_SeenWindows[0] = s_SeenWindows[1] = 0;
     s_Sent = 0;
+    s_PassedNotTaking = 0;
     s_PassedNoFocus = 0;
     s_PassedPlain = 0;
     s_PassedInjected = 0;
@@ -368,16 +449,21 @@ void ZyrSystemKeys::letGo()
 void ZyrSystemKeys::tell()
 {
 #ifdef Q_OS_WIN32
-    if (!s_InForce || s_Told == s_Sent + s_PassedNoFocus + s_PassedPlain + s_PassedInjected) {
+    const unsigned int seen =
+        s_Sent + s_PassedNotTaking + s_PassedNoFocus + s_PassedPlain + s_PassedInjected;
+    if (!s_Ours || s_Told == seen) {
         return;
     }
-    s_Told = s_Sent + s_PassedNoFocus + s_PassedPlain + s_PassedInjected;
+    s_Told = seen;
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                "zyr: system keys: Tab %u down %u up, Alt %u down %u up ; "
-                "%u carried to the host ; passed: %u without the keyboard, %u plain, %u injected ; "
-                "hook laid %u times over %u comings of the keyboard, keyboard %s, holding %u",
-                s_SeenTab[0], s_SeenTab[1], s_SeenAlt[0], s_SeenAlt[1],
-                s_Sent, s_PassedNoFocus, s_PassedPlain, s_PassedInjected,
-                s_Laid, s_Comings, s_Focused ? "here" : "elsewhere", s_Carried);
+                "zyr: system keys: Tab %u down %u up, Windows %u down %u up, Alt %u down %u up ; "
+                "%u carried to the host ; passed: %u switch off, %u without the keyboard, "
+                "%u plain, %u injected ; hook laid %u times over %u comings of the keyboard, "
+                "switch on %s, keyboard %s, holding %u",
+                s_SeenTab[0], s_SeenTab[1], s_SeenWindows[0], s_SeenWindows[1],
+                s_SeenAlt[0], s_SeenAlt[1],
+                s_Sent, s_PassedNotTaking, s_PassedNoFocus, s_PassedPlain, s_PassedInjected,
+                s_Laid, s_Comings, s_Taking ? "the session" : "this computer",
+                s_Focused ? "here" : "elsewhere", s_Carried);
 #endif
 }

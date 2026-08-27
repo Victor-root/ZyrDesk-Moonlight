@@ -44,7 +44,8 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     // zyr: in this mode the system's keys are taken here rather than by
     // the program that carries this window, and taken from the focus
     // rather than from the front; see streaming/input/zyrsystemkeys.h.
-    ZyrSystemKeys::setInForce(m_CaptureSystemKeysMode == StreamingPreferences::CSK_ZYRDESK);
+    ZyrSystemKeys::begin(zyrOwnsSystemKeys(),
+                         m_CaptureSystemKeysMode == StreamingPreferences::CSK_ZYRDESK);
 
     // Allow gamepad input when the app doesn't have focus if requested
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, prefs.backgroundGamepad ? "1" : "0");
@@ -117,6 +118,13 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_SpecialKeyCombos[KeyComboTogglePointerRegionLock].keyCode = SDLK_l;
     m_SpecialKeyCombos[KeyComboTogglePointerRegionLock].scanCode = SDL_SCANCODE_L;
     m_SpecialKeyCombos[KeyComboTogglePointerRegionLock].enabled = true;
+
+    // zyr: only our mode has this switch to throw, the three others having
+    // no state of ours to sit in.
+    m_SpecialKeyCombos[KeyComboToggleSystemKeys].keyCombo = KeyComboToggleSystemKeys;
+    m_SpecialKeyCombos[KeyComboToggleSystemKeys].keyCode = SDLK_k;
+    m_SpecialKeyCombos[KeyComboToggleSystemKeys].scanCode = SDL_SCANCODE_K;
+    m_SpecialKeyCombos[KeyComboToggleSystemKeys].enabled = zyrOwnsSystemKeys();
 
     m_OldIgnoreDevices = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES);
     m_OldIgnoreDevicesExcept = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT);
@@ -342,9 +350,10 @@ void SdlInputHandler::updateKeyboardGrabState()
     // zyr: the toolkit's own grab swallows Alt and Control whole, and every
     // shortcut of the program that carries this window is an Alt
     // combination held through the system's own registration, which never
-    // sees a swallowed key. This mode keeps that grab off and takes Tab and
-    // Échap alone; see streaming/input/zyrsystemkeys.h.
-    if (m_CaptureSystemKeysMode == StreamingPreferences::CSK_ZYRDESK) {
+    // sees a swallowed key. This mode keeps that grab off and takes Tab,
+    // Échap and the Windows key alone; see
+    // streaming/input/zyrsystemkeys.h.
+    if (zyrOwnsSystemKeys()) {
         return;
     }
 
@@ -366,8 +375,25 @@ void SdlInputHandler::updateKeyboardGrabState()
 #endif
 }
 
+bool SdlInputHandler::zyrOwnsSystemKeys()
+{
+    return m_CaptureSystemKeysMode == StreamingPreferences::CSK_ZYRDESK
+            || m_CaptureSystemKeysMode == StreamingPreferences::CSK_ZYRDESK_OFF;
+}
+
 bool SdlInputHandler::isSystemKeyCaptureActive()
 {
+    // zyr: our mode answers this from where the keyboard really is, and
+    // not from the two window flags below. Neither can ever be true here:
+    // a window carried inside another program's is never the one the
+    // system calls the front, and this mode leaves the toolkit's keyboard
+    // grab off on purpose. Asked there, this said no for the whole of
+    // every session, and the Windows key, which is the one thing it
+    // guards, never left this computer.
+    if (zyrOwnsSystemKeys()) {
+        return ZyrSystemKeys::hasTheKeyboard();
+    }
+
     if (m_CaptureSystemKeysMode == StreamingPreferences::CSK_OFF) {
         return false;
     }

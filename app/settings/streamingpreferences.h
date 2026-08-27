@@ -103,10 +103,15 @@ public:
         CSK_FULLSCREEN,
         CSK_ALWAYS,
         // zyr: the system's keys are this engine's, taken from the focus
-        // rather than from the front, and Alt, Control and the Windows key
-        // are left alone so the program that carries this window keeps its
-        // own shortcuts; see streaming/input/zyrsystemkeys.h.
+        // rather than from the front, and Alt, Control and Shift are left
+        // alone so the program that carries this window keeps its own
+        // shortcuts; see streaming/input/zyrsystemkeys.h.
         CSK_ZYRDESK,
+        // zyr: the same mode, started with its hands off. The two are one
+        // switch and not two modes: which of them the session was started
+        // in decides nothing but where the switch sits at the first frame,
+        // and the person moves it from the menu afterwards.
+        CSK_ZYRDESK_OFF,
     };
     Q_ENUM(CaptureSysKeysMode);
 

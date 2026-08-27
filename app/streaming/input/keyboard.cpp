@@ -1,4 +1,5 @@
 #include "streaming/session.h"
+#include "streaming/input/zyrsystemkeys.h"
 
 #include <Limelight.h>
 #include <SDL.h>
@@ -137,6 +138,16 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
 
         // Apply the new region lock
         updatePointerRegionLock();
+        break;
+
+    case KeyComboToggleSystemKeys:
+        // zyr: Alt+Tab, Échap and the Windows key change hands. Every key
+        // held on the far computer's behalf is given back on the way, so
+        // one pressed on one side of the switch and released on the other
+        // does not stay down over there.
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "Detected system keys toggle combo");
+        ZyrSystemKeys::setTaking(!ZyrSystemKeys::taking());
         break;
 
     default:

@@ -109,6 +109,11 @@ public:
 
     bool isSystemKeyCaptureActive();
 
+    // zyr: whether the system's keys are ours to take rather than the
+    // toolkit's, which is what both spellings of our mode on the command
+    // line say and nothing else about them differs.
+    bool zyrOwnsSystemKeys();
+
     void setCaptureActive(bool active);
 
     bool isMouseInVideoRegion(int mouseX, int mouseY, int windowWidth = -1, int windowHeight = -1);
@@ -131,6 +136,10 @@ private:
         KeyComboToggleMinimize,
         KeyComboPasteText,
         KeyComboTogglePointerRegionLock,
+        // zyr: throws the switch that decides whether Alt+Tab, Échap and
+        // the Windows key belong to the session or to this computer; see
+        // streaming/input/zyrsystemkeys.h.
+        KeyComboToggleSystemKeys,
         KeyComboMax
     };
 
