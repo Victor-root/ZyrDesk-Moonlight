@@ -554,7 +554,7 @@ unix:!macx: {
 win32 {
     RC_ICONS = zyrdesk.ico
     QMAKE_TARGET_COMPANY = ZyrDesk
-    QMAKE_TARGET_DESCRIPTION = Moteur de session ZyrDesk
+    QMAKE_TARGET_DESCRIPTION = "ZyrDesk : Moteur d'affichage"
     QMAKE_TARGET_PRODUCT = ZyrDesk
 
     CONFIG -= embed_manifest_exe
