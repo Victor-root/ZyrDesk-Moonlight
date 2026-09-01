@@ -149,6 +149,12 @@ private:
 
     bool startConnectionAsync();
 
+    // zyr: what the file this engine follows asks, and the making over of
+    // the stream it may take; see streaming/zyrfollow.h.
+    bool zyrFollowTheFile();
+
+    bool zyrMakeTheStreamOver();
+
     bool validateLaunch(SDL_Window* testWindow);
 
     void emitLaunchWarning(QString text);

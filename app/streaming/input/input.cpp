@@ -388,6 +388,12 @@ bool SdlInputHandler::zyrOwnsSystemKeys()
             || m_CaptureSystemKeysMode == StreamingPreferences::CSK_ZYRDESK_OFF;
 }
 
+void SdlInputHandler::zyrSetStreamSize(int streamWidth, int streamHeight)
+{
+    m_StreamWidth = streamWidth;
+    m_StreamHeight = streamHeight;
+}
+
 bool SdlInputHandler::isSystemKeyCaptureActive()
 {
     // zyr: our mode answers this from where the keyboard really is, and

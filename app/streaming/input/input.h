@@ -114,6 +114,10 @@ public:
     // line say and nothing else about them differs.
     bool zyrOwnsSystemKeys();
 
+    // zyr: the stream has been made over at another size under this
+    // handler, which maps the pointer onto it.
+    void zyrSetStreamSize(int streamWidth, int streamHeight);
+
     void setCaptureActive(bool active);
 
     bool isMouseInVideoRegion(int mouseX, int mouseY, int windowWidth = -1, int windowHeight = -1);

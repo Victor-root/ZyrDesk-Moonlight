@@ -1,5 +1,6 @@
 #include "session.h"
 #include "streaming/input/zyrsystemkeys.h"
+#include "streaming/zyrfollow.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
 #include "backend/richpresencemanager.h"
@@ -41,6 +42,8 @@
 #define SDL_CODE_GAMECONTROLLER_RUMBLE_TRIGGERS 102
 #define SDL_CODE_GAMECONTROLLER_SET_MOTION_EVENT_STATE 103
 #define SDL_CODE_GAMECONTROLLER_SET_CONTROLLER_LED 104
+// zyr: time to read the file this engine follows; see streaming/zyrfollow.h.
+#define SDL_CODE_ZYR_FOLLOW 105
 
 #include <openssl/rand.h>
 
@@ -1663,6 +1666,131 @@ bool Session::startConnectionAsync()
     return true;
 }
 
+// zyr: how often the file this engine follows is looked at, and the
+// reminder to look. Pushed from SDL's timer thread, where no file is
+// read: the loop reads it, on its own thread, like everything else that
+// changes the stream. The toolkit's own timers would never fire here,
+// its loop not being pumped while the stream runs.
+#define ZYR_FOLLOW_EVERY_MS 250
+
+static Uint32 zyrFollowTick(Uint32 interval, void*)
+{
+    SDL_Event event = {};
+    event.type = SDL_USEREVENT;
+    event.user.code = SDL_CODE_ZYR_FOLLOW;
+    SDL_PushEvent(&event);
+    return interval;
+}
+
+// zyr: whether the file this engine follows says the stream should be
+// something else, and makes it so when it does.
+//
+// Answers false when the stream could not be brought back, which ends
+// the session the way a lost connection does: a picture that can be
+// neither kept nor made over is a session that is over.
+bool Session::zyrFollowTheFile()
+{
+    const auto wanted = ZyrFollow::changed();
+    if (!wanted) {
+        return true;
+    }
+
+    // The rate is the host's to change while the stream runs, and whoever
+    // wrote this file has told it. What is kept here is what the next
+    // stream, if there is one, announces: made over for a codec an hour
+    // later, it asks for the rate the person last chose and not the one
+    // this engine was started with.
+    m_Preferences->bitrateKbps = wanted->bitrateKbps;
+    m_StreamConfig.bitrate = wanted->bitrateKbps;
+
+    if (wanted->width == m_Preferences->width &&
+        wanted->height == m_Preferences->height &&
+        wanted->fps == m_Preferences->fps &&
+        wanted->codec == m_Preferences->videoCodecConfig) {
+        return true;
+    }
+
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "zyr: the stream is asked to be %dx%d at %d fps in codec %d, and is made over in place",
+                wanted->width, wanted->height, wanted->fps, wanted->codec);
+    m_Preferences->width = wanted->width;
+    m_Preferences->height = wanted->height;
+    m_Preferences->fps = wanted->fps;
+    m_Preferences->videoCodecConfig = wanted->codec;
+    return zyrMakeTheStreamOver();
+}
+
+// zyr: stops the stream and starts it again, the window standing.
+//
+// What the session's own end does in two places, the decoder here and
+// the connection on a worker, is done here in one: the window is not
+// going anywhere, so there is nothing to hurry back to. What the
+// session's own start does is then done again, from the same
+// preferences, read afresh.
+bool Session::zyrMakeTheStreamOver()
+{
+    // The decoder first, under its lock: a pull-based decoder must be
+    // gone before the connection is, exactly as at the session's end.
+    SDL_AtomicLock(&m_DecoderLock);
+    delete m_VideoDecoder;
+    m_VideoDecoder = nullptr;
+    SDL_AtomicUnlock(&m_DecoderLock);
+
+    LiStopConnection();
+
+    // What the host is running is asked of it before the stream is asked
+    // for again: whether to launch or to resume is decided from that, and
+    // the polling that keeps it fresh stopped once the host had been
+    // found, which was before this session began. A host that does not
+    // answer here is answered for by the start below, with its own reason.
+    try {
+        NvHTTP http(m_Computer);
+        m_Computer->update(NvComputer(http, http.getServerInfo(NvHTTP::NvLogLevel::NVLL_VERBOSE)));
+    } catch (...) {
+    }
+
+    // Worked out again from the preferences, as at the session's start:
+    // the codec list, the colour space, the keys. The list is grown onto,
+    // so it is emptied first; and the video subsystem is taken once more
+    // for the test window that needs it and given back right after, the
+    // session's own hold on it standing throughout.
+    m_SupportedVideoFormats.clear();
+    if (!initialize()) {
+        return false;
+    }
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+
+    // The pointer is mapped onto the stream, whose size may have changed.
+    m_InputHandler->zyrSetStreamSize(m_StreamConfig.width, m_StreamConfig.height);
+
+    // Connected again the way the session was connected the first time.
+    AsyncConnectionStartThread asyncConnThread(this);
+    if (!m_ThreadedExec) {
+        asyncConnThread.start();
+        while (!asyncConnThread.wait(10)) {
+            QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+            QCoreApplication::sendPostedEvents();
+        }
+        QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+        QCoreApplication::sendPostedEvents();
+    }
+    else {
+        asyncConnThread.run();
+    }
+    if (!m_AsyncConnectionSuccess) {
+        return false;
+    }
+
+    // The decoder is built by the loop, on the road it already takes for
+    // a renderer that was lost: from what the host really sent, which the
+    // stream's setup has said by now, and with the request for a whole
+    // picture that follows.
+    SDL_Event reset = {};
+    reset.type = SDL_RENDER_DEVICE_RESET;
+    SDL_PushEvent(&reset);
+    return true;
+}
+
 void Session::flushWindowEvents()
 {
     // Pump events to ensure all pending OS events are posted
@@ -2023,6 +2151,10 @@ void Session::execInternal()
     // Toggle the stats overlay if requested by the user
     m_OverlayManager.setOverlayState(Overlay::OverlayDebug, m_Preferences->showPerformanceOverlay);
 
+    // zyr: the file this engine follows is looked at from the loop below,
+    // a few times a second, on a reminder SDL's timer pushes into it.
+    SDL_TimerID zyrFollowTimer = ZyrFollow::wanted() ? SDL_AddTimer(ZYR_FOLLOW_EVERY_MS, zyrFollowTick, nullptr) : 0;
+
     // Hijack this thread to be the SDL main thread. We have to do this
     // because we want to suspend all Qt processing until the stream is over.
     SDL_Event event;
@@ -2094,6 +2226,14 @@ void Session::execInternal()
                                                  (uint8_t)((uintptr_t)event.user.data2 >> 16),
                                                  (uint8_t)((uintptr_t)event.user.data2 >> 8),
                                                  (uint8_t)((uintptr_t)event.user.data2));
+                break;
+            case SDL_CODE_ZYR_FOLLOW:
+                // zyr: a stream that could not be made over is a session
+                // that is over, and it leaves the way a lost connection
+                // does.
+                if (!zyrFollowTheFile()) {
+                    goto DispatchDeferredCleanup;
+                }
                 break;
             default:
                 SDL_assert(false);
@@ -2363,6 +2503,11 @@ void Session::execInternal()
     }
 
 DispatchDeferredCleanup:
+    // zyr: nothing is followed past the stream.
+    if (zyrFollowTimer != 0) {
+        SDL_RemoveTimer(zyrFollowTimer);
+    }
+
     // Uncapture the mouse and hide the window immediately,
     // so we can return to the Qt GUI ASAP.
     m_InputHandler->setCaptureActive(false);

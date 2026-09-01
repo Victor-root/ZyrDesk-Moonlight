@@ -4,6 +4,7 @@
 #include <QRegularExpression>
 
 #include "streaming/video/statsreport.h"
+#include "streaming/zyrfollow.h"
 
 static bool inRange(int value, int min, int max)
 {
@@ -356,6 +357,7 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     parser.addValueOption("fps", "FPS");
     parser.addValueOption("bitrate", "bitrate in Kbps");
     parser.addValueOption("report-stats", "file to write a machine readable line of session statistics to, replaced once a second");
+    parser.addValueOption("follow-settings", "file to follow while streaming: its line changes what the stream is, without this engine being restarted");
     parser.addValueOption("packet-size", "video packet size");
     parser.addChoiceOption("display-mode", "display mode", m_WindowModeMap.keys());
     parser.addChoiceOption("audio-config", "audio config", m_AudioConfigMap.keys());
@@ -501,6 +503,11 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     // Resolve --report-stats option
     if (parser.isSet("report-stats")) {
         StatsReport::reportTo(parser.value("report-stats"));
+    }
+
+    // Resolve --follow-settings option
+    if (parser.isSet("follow-settings")) {
+        ZyrFollow::follow(parser.value("follow-settings"), m_VideoCodecMap);
     }
 
     // Resolve --capture-system-keys option

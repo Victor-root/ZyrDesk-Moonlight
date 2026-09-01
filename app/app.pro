@@ -200,6 +200,7 @@ SOURCES += \
     streaming/input/reltouch.cpp \
     streaming/input/zyrsystemkeys.cpp \
     streaming/session.cpp \
+    streaming/zyrfollow.cpp \
     streaming/audio/audio.cpp \
     streaming/audio/renderers/sdlaud.cpp \
     gui/computermodel.cpp \
@@ -236,6 +237,7 @@ HEADERS += \
     streaming/input/input.h \
     streaming/input/zyrsystemkeys.h \
     streaming/session.h \
+    streaming/zyrfollow.h \
     streaming/audio/renderers/renderer.h \
     streaming/audio/renderers/sdl.h \
     gui/computermodel.h \
