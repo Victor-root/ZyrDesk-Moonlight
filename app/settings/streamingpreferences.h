@@ -180,6 +180,12 @@ public:
     bool swapFaceButtons;
     bool keepAwake;
     int packetSize;
+    // zyr: how long the control stream waits for an acknowledgement
+    // before giving the connection up, in milliseconds. Nought leaves
+    // that library its own answer, ten seconds. Not remembered on
+    // purpose: it belongs to whoever starts this engine and says so on
+    // the command line, and no screen of this engine shows it.
+    int controlTimeoutMs = 0;
     AudioConfig audioConfig;
     VideoCodecConfig videoCodecConfig;
     bool enableHdr;

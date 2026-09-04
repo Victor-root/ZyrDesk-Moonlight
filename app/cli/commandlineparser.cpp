@@ -359,6 +359,7 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     parser.addValueOption("report-stats", "file to write a machine readable line of session statistics to, replaced once a second");
     parser.addValueOption("follow-settings", "file to follow while streaming: its line changes what the stream is, without this engine being restarted");
     parser.addValueOption("packet-size", "video packet size");
+    parser.addValueOption("control-timeout", "milliseconds the control stream waits for an acknowledgement before giving the connection up");
     parser.addChoiceOption("display-mode", "display mode", m_WindowModeMap.keys());
     parser.addChoiceOption("audio-config", "audio config", m_AudioConfigMap.keys());
     parser.addToggleOption("multi-controller", "multiple controller support");
@@ -429,6 +430,14 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     } else if (displaySet || parser.isSet("fps")) {
         preferences->bitrateKbps = preferences->getDefaultBitrate(
             preferences->width, preferences->height, preferences->fps, preferences->enableYUV444);
+    }
+
+    // Resolve --control-timeout option
+    if (parser.isSet("control-timeout")) {
+        preferences->controlTimeoutMs = parser.getIntOption("control-timeout");
+        if (preferences->controlTimeoutMs < 1000) {
+            parser.showError("Control timeout must be at least 1000 milliseconds");
+        }
     }
 
     // Resolve --packet-size option

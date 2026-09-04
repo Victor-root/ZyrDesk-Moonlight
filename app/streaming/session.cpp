@@ -648,6 +648,8 @@ bool Session::initialize()
 
     m_StreamConfig.fps = m_Preferences->fps;
     m_StreamConfig.bitrate = m_Preferences->bitrateKbps;
+    // zyr: nought here leaves the streaming library its own ten seconds.
+    m_StreamConfig.controlStreamTimeoutMs = m_Preferences->controlTimeoutMs;
 
 #ifndef STEAM_LINK
     // Opt-in to all encryption features if we detect that the platform
