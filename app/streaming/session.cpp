@@ -44,6 +44,7 @@
 #define SDL_CODE_GAMECONTROLLER_SET_CONTROLLER_LED 104
 // zyr: time to read the file this engine follows; see streaming/zyrfollow.h.
 #define SDL_CODE_ZYR_FOLLOW 105
+#define SDL_CODE_ZYR_POINT 106
 
 #include <openssl/rand.h>
 
@@ -1684,6 +1685,23 @@ static Uint32 zyrFollowTick(Uint32 interval, void*)
     return interval;
 }
 
+// zyr: how often the shape of the pointer is looked at.
+//
+// Far more often than the settings above, and for a different reason:
+// that file changes when somebody chooses something, this one changes
+// whenever a hand crosses the edge of a window. A quarter of a second
+// would be a text field entered and an arrow still standing over it.
+#define ZYR_POINT_EVERY_MS 50
+
+static Uint32 zyrPointTick(Uint32 interval, void*)
+{
+    SDL_Event event = {};
+    event.type = SDL_USEREVENT;
+    event.user.code = SDL_CODE_ZYR_POINT;
+    SDL_PushEvent(&event);
+    return interval;
+}
+
 // zyr: whether the file this engine follows says the stream should be
 // something else, and makes it so when it does.
 //
@@ -2156,6 +2174,10 @@ void Session::execInternal()
     // zyr: the file this engine follows is looked at from the loop below,
     // a few times a second, on a reminder SDL's timer pushes into it.
     SDL_TimerID zyrFollowTimer = ZyrFollow::wanted() ? SDL_AddTimer(ZYR_FOLLOW_EVERY_MS, zyrFollowTick, nullptr) : 0;
+    // zyr: and the shape of the pointer, on its own reminder: it is
+    // looked at several times more often, and setting a cursor belongs
+    // to the thread that owns the window, which is this one.
+    SDL_TimerID zyrPointTimer = ZyrFollow::pointerWanted() ? SDL_AddTimer(ZYR_POINT_EVERY_MS, zyrPointTick, nullptr) : 0;
 
     // Hijack this thread to be the SDL main thread. We have to do this
     // because we want to suspend all Qt processing until the stream is over.
@@ -2236,6 +2258,13 @@ void Session::execInternal()
                 if (!zyrFollowTheFile()) {
                     goto DispatchDeferredCleanup;
                 }
+                break;
+            case SDL_CODE_ZYR_POINT:
+                // zyr: the shape the pointer of the computer being watched
+                // has right now, given to the one drawn here. Nothing can
+                // fail its way out of a session: a shape that cannot be
+                // read or made leaves the pointer as it is.
+                ZyrFollow::pointAsTheFileSays();
                 break;
             default:
                 SDL_assert(false);
@@ -2506,6 +2535,10 @@ void Session::execInternal()
 
 DispatchDeferredCleanup:
     // zyr: nothing is followed past the stream.
+    if (zyrPointTimer != 0) {
+        SDL_RemoveTimer(zyrPointTimer);
+        ZyrFollow::letThePointerGo();
+    }
     if (zyrFollowTimer != 0) {
         SDL_RemoveTimer(zyrFollowTimer);
     }

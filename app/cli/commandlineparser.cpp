@@ -358,6 +358,7 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     parser.addValueOption("bitrate", "bitrate in Kbps");
     parser.addValueOption("report-stats", "file to write a machine readable line of session statistics to, replaced once a second");
     parser.addValueOption("follow-settings", "file to follow while streaming: its line changes what the stream is, without this engine being restarted");
+    parser.addValueOption("follow-pointer", "file to follow while streaming: its word is the shape given to the pointer drawn here, which in remote desktop mouse mode is the pointer the hand follows");
     parser.addValueOption("packet-size", "video packet size");
     parser.addValueOption("control-timeout", "milliseconds the control stream waits for an acknowledgement before giving the connection up");
     parser.addChoiceOption("display-mode", "display mode", m_WindowModeMap.keys());
@@ -517,6 +518,11 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     // Resolve --follow-settings option
     if (parser.isSet("follow-settings")) {
         ZyrFollow::follow(parser.value("follow-settings"), m_VideoCodecMap);
+    }
+
+    // Resolve --follow-pointer option
+    if (parser.isSet("follow-pointer")) {
+        ZyrFollow::followThePointer(parser.value("follow-pointer"));
     }
 
     // Resolve --capture-system-keys option

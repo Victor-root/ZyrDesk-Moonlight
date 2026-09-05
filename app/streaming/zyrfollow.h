@@ -58,4 +58,38 @@ public:
     // it can be tried on its own.
     static std::optional<Wanted> parse(const QString& line,
                                        const QMap<QString, StreamingPreferences::VideoCodecConfig>& codecs);
+
+    // zyr: the shape this engine gives the pointer it draws.
+    //
+    // A second file beside the one above, and never a field in it: that
+    // line says what the stream should be, and a line that differs makes
+    // the stream over. A shape changes every time a hand crosses a text
+    // field, which must cost nothing at all.
+    //
+    // Why it exists. In remote desktop mouse mode this engine can be
+    // asked to show the pointer of the computer sitting in front of it,
+    // so that the pointer follows the hand with no network in between;
+    // the host's own pointer is drawn into the video, a round trip
+    // behind. What that buys in answer it loses in meaning: nothing in
+    // the stream carries the shape of the host's pointer, so the pointer
+    // shown here was an arrow whatever it stood on. A desktop says what
+    // a click is about to do through that shape and through almost
+    // nothing else.
+    //
+    // One word to a line: arrow, text, hand, wait, waitarrow, cross,
+    // sizewe, sizens, sizenwse, sizenesw, sizeall, no. Whoever writes
+    // the file knows the host's pointer; this engine owns every one of
+    // those shapes already, drawn by the system it runs on at that
+    // system's own size. A word this engine does not know, a file that
+    // is missing, empty or unreadable, all leave the pointer alone.
+    static void followThePointer(const QString& path);
+    static bool pointerWanted();
+
+    // Gives the pointer the shape the file names, when it names one it
+    // did not name at the last reading. Called from the thread that owns
+    // the window: a cursor belongs to it.
+    static void pointAsTheFileSays();
+
+    // Lets go of the shapes this engine made, the session being over.
+    static void letThePointerGo();
 };
