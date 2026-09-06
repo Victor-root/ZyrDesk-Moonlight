@@ -3,6 +3,7 @@
 #include <SDL_syswm.h>
 #include "streaming/session.h"
 #include "settings/mappingmanager.h"
+#include "streaming/input/zyrpointer.h"
 #include "streaming/input/zyrsystemkeys.h"
 #include "streaming/zyrfollow.h"
 #include "path.h"
@@ -225,6 +226,11 @@ SdlInputHandler::~SdlInputHandler()
     // behalf is given back while there is still a session to give it to.
     ZyrSystemKeys::letGo();
 
+    // zyr: and the pointer with it, which is holding this computer's own
+    // to a point in the middle of the picture; see
+    // streaming/input/zyrpointer.h.
+    ZyrPointer::stopWatching();
+
     for (int i = 0; i < MAX_GAMEPADS; i++) {
         if (m_GamepadState[i].mouseEmulationTimer != 0) {
             Session::get()->notifyMouseEmulationMode(false);
@@ -276,18 +282,22 @@ void SdlInputHandler::setWindow(SDL_Window *window)
 {
     m_Window = window;
 
-    // zyr: the system's keys follow this window's own keyboard, which the
-    // toolkit cannot report for a window carried inside another program's;
-    // see streaming/input/zyrsystemkeys.h.
+    // zyr: the system's keys follow this window's own keyboard, and a
+    // game's movement is read at this window too, neither being something
+    // the toolkit can report for a window carried inside another
+    // program's; see streaming/input/zyrsystemkeys.h and
+    // streaming/input/zyrpointer.h.
     if (window != nullptr) {
         SDL_SysWMinfo info;
         SDL_VERSION(&info.version);
         if (SDL_GetWindowWMInfo(window, &info) && info.subsystem == SDL_SYSWM_WINDOWS) {
             ZyrSystemKeys::watch(info.info.win.window);
+            ZyrPointer::watch(info.info.win.window);
         }
     }
     else {
         ZyrSystemKeys::stopWatching();
+        ZyrPointer::stopWatching();
     }
 }
 
@@ -499,6 +509,14 @@ void SdlInputHandler::setCaptureActive(bool active)
 
     // Now update the keyboard grab
     updateKeyboardGrabState();
+
+    // zyr: and last of all, since asking the system for a game's movement
+    // names the window it goes to and the toolkit has just asked for the
+    // same movement without naming one. Read from the toolkit rather than
+    // from the two flags above it, so that a relative mouse mode refused
+    // reads here as the absolute one it fell back to; see
+    // streaming/input/zyrpointer.h.
+    ZyrPointer::setReading(SDL_GetRelativeMouseMode() == SDL_TRUE);
 }
 
 void SdlInputHandler::handleTouchFingerEvent(SDL_TouchFingerEvent* event)

@@ -1,5 +1,7 @@
 #include "zyrsystemkeys.h"
 
+#include "zyrpointer.h"
+
 #include <QtGlobal>
 #include <SDL.h>
 
@@ -258,6 +260,13 @@ void keyboardIsHere(bool here);
 // Both are sent to the window that gains or loses it, whatever holds the
 // front, so they say the one thing that matters here and the toolkit's own
 // reading cannot; see the header.
+//
+// And the mouse's own movement passes here too, this being the one place
+// in the engine where this window's messages are seen before the toolkit
+// reads them. It is a different subject and lives in its own file; what
+// it needs from this one is the step in front, which there can only be
+// one of. Left to the toolkit as well, since it drops the ones that
+// matter and keeps the rest; see zyrpointer.h.
 LRESULT CALLBACK zyrWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
 {
     if (message == WM_SETFOCUS) {
@@ -265,6 +274,9 @@ LRESULT CALLBACK zyrWindowProc(HWND window, UINT message, WPARAM wParam, LPARAM 
     }
     else if (message == WM_KILLFOCUS) {
         keyboardIsHere(false);
+    }
+    else if (message == WM_INPUT) {
+        ZyrPointer::sawRawInput(reinterpret_cast<void*>(lParam));
     }
     return CallWindowProcW(s_TheirProc, window, message, wParam, lParam);
 }

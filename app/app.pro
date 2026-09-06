@@ -198,6 +198,7 @@ SOURCES += \
     streaming/input/keyboard.cpp \
     streaming/input/mouse.cpp \
     streaming/input/reltouch.cpp \
+    streaming/input/zyrpointer.cpp \
     streaming/input/zyrsystemkeys.cpp \
     streaming/session.cpp \
     streaming/zyrfollow.cpp \
@@ -235,6 +236,7 @@ HEADERS += \
     cli/startstream.h \
     settings/streamingpreferences.h \
     streaming/input/input.h \
+    streaming/input/zyrpointer.h \
     streaming/input/zyrsystemkeys.h \
     streaming/session.h \
     streaming/zyrfollow.h \
