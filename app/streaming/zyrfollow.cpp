@@ -18,17 +18,40 @@ QString s_LastLine;
 QString s_PointerPath;
 QString s_LastShape;
 
-// The shapes this engine has made so far. Made once each and kept: a
-// hand crossing the edge of a window names two of them a second, and
-// making a cursor for every naming would be a shape built and thrown
-// away sixty times a minute.
+// The shapes this engine has made so far, by the word that named them.
 QMap<QString, SDL_Cursor*> s_Shapes;
 
-// The word this engine knows, and what the system it runs on calls it.
-// Anything outside this list leaves the pointer alone: whoever writes
-// the file may be of a later build than this engine, and a pointer that
+// The word that is not a shape: the host is drawing its own pointer into
+// the video for this moment, and the answer here is to draw none.
+const QLatin1String kTheirs("theirs");
+
+// A pointer with nothing in it, for that word.
+//
+// Eight wide by eight high with every bit clear in both the drawing and
+// its mask, which is what SDL reads as fully transparent; a width that
+// is a multiple of eight is all SDL_CreateCursor asks for. A shape and
+// not a hiding, deliberately: whether the pointer shows at all belongs
+// to the mouse mode and to this engine's own switch, and reaching into
+// that from here would leave the two disagreeing the moment either
+// moved.
+SDL_Cursor* nothingAtAll()
+{
+    static const Uint8 empty[8] = {};
+    return SDL_CreateCursor(empty, empty, 8, 8, 0, 0);
+}
+
+// The pointer this engine draws for a word, made once and kept.
+//
+// A hand crossing the edge of a window names two shapes a second, and
+// making a cursor for every naming would be a shape built and thrown
+// away sixty times a minute.
+//
+// Anything outside the list leaves the pointer alone: whoever writes the
+// file may be of a later build than this engine, and a pointer that
 // vanished over a word would be worse than one that did not change.
-SDL_SystemCursor shapeNamed(const QString& word, bool* known)
+// Nothing comes back for such a word, and `known` says which of the two
+// kinds of nothing this is.
+SDL_Cursor* pointerFor(const QString& word, bool* known)
 {
     static const QMap<QString, SDL_SystemCursor> shapes = {
         {"arrow", SDL_SYSTEM_CURSOR_ARROW},
@@ -45,8 +68,19 @@ SDL_SystemCursor shapeNamed(const QString& word, bool* known)
         {"no", SDL_SYSTEM_CURSOR_NO},
     };
     const auto found = shapes.constFind(word);
-    *known = found != shapes.constEnd();
-    return *known ? found.value() : SDL_SYSTEM_CURSOR_ARROW;
+    *known = found != shapes.constEnd() || word == kTheirs;
+    if (!*known) {
+        return nullptr;
+    }
+
+    SDL_Cursor* made = s_Shapes.value(word, nullptr);
+    if (made == nullptr) {
+        made = word == kTheirs ? nothingAtAll() : SDL_CreateSystemCursor(found.value());
+        if (made != nullptr) {
+            s_Shapes.insert(word, made);
+        }
+    }
+    return made;
 }
 }
 
@@ -162,7 +196,7 @@ void ZyrFollow::pointAsTheFileSays()
     }
 
     bool known = false;
-    const SDL_SystemCursor which = shapeNamed(word, &known);
+    SDL_Cursor* shape = pointerFor(word, &known);
     if (!known) {
         // Held all the same, so an unknown word is looked at once and not
         // at every reading for the rest of the session.
@@ -172,17 +206,11 @@ void ZyrFollow::pointAsTheFileSays()
                     qPrintable(word));
         return;
     }
-
-    SDL_Cursor* shape = s_Shapes.value(word, nullptr);
     if (shape == nullptr) {
-        shape = SDL_CreateSystemCursor(which);
-        if (shape == nullptr) {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                        "zyr: the pointer could not be made '%s': %s",
-                        qPrintable(word), SDL_GetError());
-            return;
-        }
-        s_Shapes.insert(word, shape);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "zyr: the pointer could not be made '%s': %s",
+                    qPrintable(word), SDL_GetError());
+        return;
     }
 
     // Set whether or not the pointer is showing right now. Whether it

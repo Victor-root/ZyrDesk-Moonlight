@@ -82,6 +82,13 @@ public:
     // those shapes already, drawn by the system it runs on at that
     // system's own size. A word this engine does not know, a file that
     // is missing, empty or unreadable, all leave the pointer alone.
+    //
+    // One more word, theirs, is not a shape: it says the host is drawing
+    // its own pointer into the video for this moment, which Windows does
+    // to itself while a window is being dragged, and no setting of the
+    // host's engine takes it back out. The pointer here is then given a
+    // shape with nothing in it, so that the one in the video is the only
+    // one on screen, rather than the second of two.
     static void followThePointer(const QString& path);
     static bool pointerWanted();
 
