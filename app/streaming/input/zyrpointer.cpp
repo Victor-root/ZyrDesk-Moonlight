@@ -43,13 +43,23 @@ bool askForTheMovement(bool wanted)
     mouse.usUsage = 0x02;
     mouse.dwFlags = wanted ? RIDEV_INPUTSINK : RIDEV_REMOVE;
     mouse.hwndTarget = wanted ? s_Window : nullptr;
-    return RegisterRawInputDevices(&mouse, 1, sizeof(mouse)) != FALSE;
+    return RegisterRawInputDevices(&mouse, 1, static_cast<UINT>(sizeof(mouse))) != FALSE;
 }
 
 // A movement of the device, held to what the protocol carries.
+//
+// Bounded by hand rather than with the toolkit's, whose overloads cannot
+// tell which of the two widths to take when the ends and the middle are
+// not written the same.
 short asFarAsItGoes(LONG moved)
 {
-    return static_cast<short>(qBound<LONG>(SHRT_MIN, moved, SHRT_MAX));
+    if (moved < SHRT_MIN) {
+        return SHRT_MIN;
+    }
+    if (moved > SHRT_MAX) {
+        return SHRT_MAX;
+    }
+    return static_cast<short>(moved);
 }
 
 #endif
@@ -135,12 +145,12 @@ void ZyrPointer::sawRawInput(void* packet)
     }
 
     RAWINPUT read = {};
-    UINT size = sizeof(read);
+    UINT size = static_cast<UINT>(sizeof(read));
     if (GetRawInputData(static_cast<HRAWINPUT>(packet),
                         RID_INPUT,
                         &read,
                         &size,
-                        sizeof(RAWINPUTHEADER)) == static_cast<UINT>(-1) ||
+                        static_cast<UINT>(sizeof(RAWINPUTHEADER))) == static_cast<UINT>(-1) ||
         read.header.dwType != RIM_TYPEMOUSE) {
         return;
     }
