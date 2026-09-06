@@ -9,6 +9,7 @@
 #include <Limelight.h>
 
 #include <climits>
+#include <iterator>
 
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
@@ -30,6 +31,10 @@ unsigned int s_Taken = 0;
 unsigned int s_Left = 0;
 unsigned int s_Elsewhere = 0;
 unsigned int s_Buttons = 0;
+
+// Whether the hand was last seen standing on the picture, so a crossing
+// is said once and standing still says nothing.
+bool s_OnThePicture = true;
 
 // Asks the system for the mouse's own movement, named at this window so
 // that it arrives while this window is not the one at the front.
@@ -72,13 +77,31 @@ bool theHandIsOnThePicture()
         return true;
     }
     const HWND under = WindowFromPoint(where);
-    if (under == nullptr) {
-        return false;
-    }
     // The window itself, or one of the windows it is made of: a toolkit
     // may draw the picture in a child of its own window, and that child
     // is the picture as much as its parent is.
-    return under == s_Window || IsChild(s_Window, under) != 0;
+    const bool on = under != nullptr && (under == s_Window || IsChild(s_Window, under) != 0);
+
+    // Said at every crossing and never in between, which is the only
+    // question a hand that cannot reach a button asks: was it seen to
+    // leave the picture at all, and what did it land on. The window is
+    // named by its class, the one thing about somebody else's window
+    // that can be read without asking that program anything.
+    if (on != s_OnThePicture) {
+        s_OnThePicture = on;
+        wchar_t sort[64] = {};
+        if (under != nullptr) {
+            GetClassNameW(under, sort, static_cast<int>(std::size(sort)));
+        }
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "zyr: the hand is %s the picture, at (%ld, %ld), on window %p of class '%ls'",
+                    on ? "back on" : "off",
+                    where.x,
+                    where.y,
+                    static_cast<void*>(under),
+                    sort);
+    }
+    return on;
 }
 
 // The buttons of the device, given to this engine as its own events.
