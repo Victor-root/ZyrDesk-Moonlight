@@ -29,6 +29,7 @@ bool s_Reading = false;
 unsigned int s_Taken = 0;
 unsigned int s_Left = 0;
 unsigned int s_Elsewhere = 0;
+unsigned int s_Buttons = 0;
 
 // Asks the system for the mouse's own movement, named at this window so
 // that it arrives while this window is not the one at the front.
@@ -78,6 +79,50 @@ bool theHandIsOnThePicture()
     // may draw the picture in a child of its own window, and that child
     // is the picture as much as its parent is.
     return under == s_Window || IsChild(s_Window, under) != 0;
+}
+
+// The buttons of the device, given to this engine as its own events.
+//
+// In relative mouse mode the toolkit ignores the ordinary window
+// messages a click sends, on purpose: it expects the buttons to come in
+// on the raw channel beside the movement. That channel is the one it
+// drops for a window it believes has not the keyboard, so in this mode
+// nobody read the buttons at all and a game had a mouse that moved and
+// could not click.
+//
+// Handed on as the toolkit's own events rather than sent to the far
+// computer from here, so that everything this engine does with a click
+// still happens: which button is which when they are swapped, and the
+// waiting a desktop's first click is given.
+void handTheButtonsOver(USHORT flags)
+{
+    static const struct {
+        USHORT down;
+        USHORT up;
+        Uint8 button;
+    } BUTTONS[] = {
+        {RI_MOUSE_LEFT_BUTTON_DOWN, RI_MOUSE_LEFT_BUTTON_UP, SDL_BUTTON_LEFT},
+        {RI_MOUSE_RIGHT_BUTTON_DOWN, RI_MOUSE_RIGHT_BUTTON_UP, SDL_BUTTON_RIGHT},
+        {RI_MOUSE_MIDDLE_BUTTON_DOWN, RI_MOUSE_MIDDLE_BUTTON_UP, SDL_BUTTON_MIDDLE},
+        {RI_MOUSE_BUTTON_4_DOWN, RI_MOUSE_BUTTON_4_UP, SDL_BUTTON_X1},
+        {RI_MOUSE_BUTTON_5_DOWN, RI_MOUSE_BUTTON_5_UP, SDL_BUTTON_X2},
+    };
+
+    for (const auto& one : BUTTONS) {
+        const bool down = (flags & one.down) != 0;
+        if (!down && (flags & one.up) == 0) {
+            continue;
+        }
+        SDL_Event event;
+        SDL_zero(event);
+        event.type = down ? SDL_MOUSEBUTTONDOWN : SDL_MOUSEBUTTONUP;
+        event.button.timestamp = SDL_GetTicks();
+        event.button.state = down ? SDL_PRESSED : SDL_RELEASED;
+        event.button.button = one.button;
+        event.button.clicks = 1;
+        SDL_PushEvent(&event);
+        s_Buttons++;
+    }
 }
 
 // A movement of the device, held to what the protocol carries.
@@ -146,6 +191,7 @@ void ZyrPointer::setReading(bool reading)
         s_Taken = 0;
         s_Left = 0;
         s_Elsewhere = 0;
+        s_Buttons = 0;
         s_Reading = true;
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                     "zyr: a game's movement is read from the system itself, "
@@ -155,9 +201,10 @@ void ZyrPointer::setReading(bool reading)
     s_Reading = false;
     askForTheMovement(false);
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                "zyr: pointer: %u movements read from the system, %u left to the toolkit, "
-                "%u dropped with the hand off the picture",
+                "zyr: pointer: %u movements and %u buttons read from the system, "
+                "%u left to the toolkit, %u dropped with the hand off the picture",
                 s_Taken,
+                s_Buttons,
                 s_Left,
                 s_Elsewhere);
 #else
@@ -194,6 +241,13 @@ void ZyrPointer::sawRawInput(void* packet)
                         static_cast<UINT>(sizeof(RAWINPUTHEADER))) == static_cast<UINT>(-1) ||
         read.header.dwType != RIM_TYPEMOUSE) {
         return;
+    }
+
+    // The buttons first and on their own: a packet that carries a click
+    // carries no movement, so weighing the movement before them would
+    // drop every click there is.
+    if (read.data.mouse.usButtonFlags != 0) {
+        handTheButtonsOver(read.data.mouse.usButtonFlags);
     }
 
     // A place and not a movement, which is what a tablet and a remote
