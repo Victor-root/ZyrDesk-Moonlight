@@ -27,6 +27,15 @@
 // window that really is at the front is left entirely to it, which is
 // every use of this engine outside this product.
 //
+// The movement is the device's own and owes nothing to where the pointer
+// stands, which is what a game wants and is also a way of taking a hand
+// that was never offered. The window carrying this one draws its own
+// buttons over the picture and does not always cover the screen: a hand
+// on one of those, or on this computer's own task bar, has left the far
+// computer, and sending its movement onward would drive two pointers
+// with one hand. So the movement is read only while the window under the
+// pointer is this one.
+//
 // Only the movement, and deliberately not the cage that goes with it.
 // Relative mouse mode also shuts the pointer on a point so that it
 // cannot leave the picture or carry a click elsewhere, and the toolkit

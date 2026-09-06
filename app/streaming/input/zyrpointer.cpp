@@ -28,6 +28,7 @@ bool s_Reading = false;
 // only question this file exists for.
 unsigned int s_Taken = 0;
 unsigned int s_Left = 0;
+unsigned int s_Elsewhere = 0;
 
 // Asks the system for the mouse's own movement, named at this window so
 // that it arrives while this window is not the one at the front.
@@ -44,6 +45,39 @@ bool askForTheMovement(bool wanted)
     mouse.dwFlags = wanted ? RIDEV_INPUTSINK : RIDEV_REMOVE;
     mouse.hwndTarget = wanted ? s_Window : nullptr;
     return RegisterRawInputDevices(&mouse, 1, static_cast<UINT>(sizeof(mouse))) != FALSE;
+}
+
+// Whether the pointer of this computer is standing on the picture.
+//
+// The movement read here is the device's own and owes nothing to where
+// the pointer stands, which is the whole point of it and is also a way
+// of taking a hand that was never offered. A window carrying this one
+// puts its own buttons over the picture and stands in a window that does
+// not always cover the screen: a hand on one of those buttons, or on
+// this computer's own task bar, is a hand that has left the far
+// computer, and sending its movement onward drives two pointers with one
+// hand. So the window under the pointer is asked, and it must be this
+// one; not merely the rectangle, since what is drawn over the picture is
+// inside that rectangle too.
+bool theHandIsOnThePicture()
+{
+    POINT where;
+    if (!GetCursorPos(&where)) {
+        // Answered yes: the reading is what a game is played with, and a
+        // question the system will not answer is no reason to stop a
+        // game. What this guards against is a hand deliberately taken
+        // elsewhere, which is not a thing that happens without the
+        // system knowing where the pointer is.
+        return true;
+    }
+    const HWND under = WindowFromPoint(where);
+    if (under == nullptr) {
+        return false;
+    }
+    // The window itself, or one of the windows it is made of: a toolkit
+    // may draw the picture in a child of its own window, and that child
+    // is the picture as much as its parent is.
+    return under == s_Window || IsChild(s_Window, under) != 0;
 }
 
 // A movement of the device, held to what the protocol carries.
@@ -111,6 +145,7 @@ void ZyrPointer::setReading(bool reading)
         }
         s_Taken = 0;
         s_Left = 0;
+        s_Elsewhere = 0;
         s_Reading = true;
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                     "zyr: a game's movement is read from the system itself, "
@@ -120,9 +155,11 @@ void ZyrPointer::setReading(bool reading)
     s_Reading = false;
     askForTheMovement(false);
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                "zyr: pointer: %u movements read from the system, %u left to the toolkit",
+                "zyr: pointer: %u movements read from the system, %u left to the toolkit, "
+                "%u dropped with the hand off the picture",
                 s_Taken,
-                s_Left);
+                s_Left,
+                s_Elsewhere);
 #else
     Q_UNUSED(reading);
 #endif
@@ -141,6 +178,10 @@ void ZyrPointer::sawRawInput(void* packet)
     // game would be played at twice the speed of the hand.
     if (GetForegroundWindow() == s_Window) {
         s_Left++;
+        return;
+    }
+    if (!theHandIsOnThePicture()) {
+        s_Elsewhere++;
         return;
     }
 
