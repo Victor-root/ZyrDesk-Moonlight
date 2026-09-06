@@ -4,6 +4,7 @@
 #include "streaming/session.h"
 #include "settings/mappingmanager.h"
 #include "streaming/input/zyrsystemkeys.h"
+#include "streaming/zyrfollow.h"
 #include "path.h"
 #include "utils.h"
 
@@ -23,7 +24,18 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
       m_PointerRegionLockToggledByUser(false),
       m_FakeCaptureActive(false),
       m_CaptureSystemKeysMode(prefs.captureSysKeysMode),
-      m_MouseCursorCapturedVisibilityState(SDL_DISABLE),
+      // zyr: shown from the start when a pointer file is being followed.
+      //
+      // Whoever asked this engine to follow that file wants the pointer
+      // this engine draws: that is what the file is for, and it names a
+      // shape several times a second for as long as the session lasts.
+      // Reaching that switch otherwise means the key combination below,
+      // injected into this window from outside, which any program on
+      // that computer can claim for itself and swallow before it arrives
+      // here, without anything anywhere saying so. A session then ran
+      // with the pointer of the far machine taken away and this one
+      // never shown, which is a session with no pointer at all.
+      m_MouseCursorCapturedVisibilityState(ZyrFollow::pointerWanted() ? SDL_ENABLE : SDL_DISABLE),
       m_LongPressTimer(0),
       m_StreamWidth(streamWidth),
       m_StreamHeight(streamHeight),
