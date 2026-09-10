@@ -52,7 +52,6 @@ unsigned int s_Sent = 0;
 unsigned int s_PassedNotTaking = 0;
 unsigned int s_PassedNoFocus = 0;
 unsigned int s_PassedPlain = 0;
-unsigned int s_PassedInjected = 0;
 unsigned int s_Told = 0;
 unsigned int s_Laid = 0;
 unsigned int s_Comings = 0;
@@ -71,6 +70,7 @@ const struct
     { VK_LWIN,     4, SDL_SCANCODE_LGUI,        SDLK_LGUI },
     { VK_RWIN,     8, SDL_SCANCODE_RGUI,        SDLK_RGUI },
     { VK_SNAPSHOT, 16, SDL_SCANCODE_PRINTSCREEN, SDLK_PRINTSCREEN },
+    { VK_MEDIA_PLAY_PAUSE, 32, SDL_SCANCODE_AUDIOPLAY, SDLK_AUDIOPLAY },
 };
 
 // Whether the system itself calls this keystroke one of its own, which for
@@ -89,9 +89,11 @@ bool theSystemCallsItItsOwn(WPARAM what)
 // Tab and Échap on their own are ordinary keys and are left alone: a
 // session where Tab moved nothing and Échap closed nothing would be a
 // session nobody can work in. It is the company they keep that makes them
-// the system's. The Windows key and the screen key keep no company: the
-// system takes each of them alone, and takes the Windows key again with
-// whatever follows it.
+// the system's. The Windows key, the screen key and the key that plays and
+// pauses keep no company: the system takes each of them alone, and takes
+// the Windows key again with whatever follows it. The last of the three is
+// taken furthest of all, being handed straight to whatever is playing on
+// this computer without any window being consulted.
 bool theSystemWouldEatIt(DWORD key, WPARAM what)
 {
     bool alt = theSystemCallsItItsOwn(what) || (s_Held & 1);
@@ -103,6 +105,7 @@ bool theSystemWouldEatIt(DWORD key, WPARAM what)
     case VK_LWIN:
     case VK_RWIN:
     case VK_SNAPSHOT:
+    case VK_MEDIA_PLAY_PAUSE:
         return true;
     default:
         return false;
@@ -183,9 +186,11 @@ LRESULT CALLBACK zyrKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
     const KBDLLHOOKSTRUCT* key = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
     const bool up = wParam == WM_KEYUP || wParam == WM_SYSKEYUP;
 
-    // Fingers only. A keystroke another program sent, ZyrDesk's own
-    // floating menu included, is not a finger on a key, and letting it
-    // drive what Alt is doing had this contradict the hand in front of it.
+    // What a modifier is doing follows the hand and only the hand. A
+    // keystroke another program sent is not a finger on a key, and
+    // letting it drive this had it contradict the finger in front of it.
+    // Nothing below reads it: where a keystroke goes is decided by where
+    // the keyboard is, whoever produced it.
     const bool aFinger = (key->flags & LLKHF_INJECTED) == 0;
     if (aFinger) {
         switch (key->vkCode) {
@@ -234,10 +239,18 @@ LRESULT CALLBACK zyrKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
         s_PassedNotTaking++;
         return CallNextHookEx(nullptr, nCode, wParam, lParam);
     }
-    if (!aFinger) {
-        s_PassedInjected++;
-        return CallNextHookEx(nullptr, nCode, wParam, lParam);
-    }
+    // Who produced a keystroke does not decide where it goes; where the
+    // keyboard is does. This used to hand every injected one back to the
+    // system, and that was one question too many: an Alt+Tab sent by a
+    // program is aimed at the window that has the keyboard exactly as a
+    // finger's is, and given back it acted on this computer instead. It
+    // is what the program carrying this window sends when a hand asks for
+    // the far computer's next window from a touchpad, and what an
+    // on-screen keyboard sends for somebody who cannot use a real one.
+    //
+    // The distinction is kept where it belongs, above: what a modifier is
+    // doing follows the hand, and letting an injected keystroke drive
+    // that had this contradict the finger in front of it.
     if (!s_Focused || !theKeyboardIsReallyOurs()) {
         s_PassedNoFocus++;
         return CallNextHookEx(nullptr, nCode, wParam, lParam);
@@ -454,7 +467,6 @@ void ZyrSystemKeys::letGo()
     s_PassedNotTaking = 0;
     s_PassedNoFocus = 0;
     s_PassedPlain = 0;
-    s_PassedInjected = 0;
     s_Told = 0;
     s_Laid = 0;
     s_Comings = 0;
@@ -464,8 +476,7 @@ void ZyrSystemKeys::letGo()
 void ZyrSystemKeys::tell()
 {
 #ifdef Q_OS_WIN32
-    const unsigned int seen =
-        s_Sent + s_PassedNotTaking + s_PassedNoFocus + s_PassedPlain + s_PassedInjected;
+    const unsigned int seen = s_Sent + s_PassedNotTaking + s_PassedNoFocus + s_PassedPlain;
     if (!s_Ours || s_Told == seen) {
         return;
     }
@@ -473,11 +484,11 @@ void ZyrSystemKeys::tell()
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "zyr: system keys: Tab %u down %u up, Windows %u down %u up, Alt %u down %u up ; "
                 "%u carried to the host ; passed: %u switch off, %u without the keyboard, "
-                "%u plain, %u injected ; hook laid %u times over %u comings of the keyboard, "
+                "%u plain ; hook laid %u times over %u comings of the keyboard, "
                 "switch on %s, keyboard %s, holding %u",
                 s_SeenTab[0], s_SeenTab[1], s_SeenWindows[0], s_SeenWindows[1],
                 s_SeenAlt[0], s_SeenAlt[1],
-                s_Sent, s_PassedNotTaking, s_PassedNoFocus, s_PassedPlain, s_PassedInjected,
+                s_Sent, s_PassedNotTaking, s_PassedNoFocus, s_PassedPlain,
                 s_Laid, s_Comings, s_Taking ? "the session" : "this computer",
                 s_Focused ? "here" : "elsewhere", s_Carried);
 #endif

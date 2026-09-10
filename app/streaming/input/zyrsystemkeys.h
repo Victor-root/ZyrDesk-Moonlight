@@ -3,10 +3,11 @@
 // zyr: the one owner of this computer's system key combinations while a
 // ZyrDesk session holds the keyboard.
 //
-// Alt+Tab, Alt+Maj+Tab, Alt+Échap and the Windows key never reach the
-// window they are typed at: the system acts on them itself. A remote
-// desktop wants the opposite, and the only way Microsoft documents is to
-// step in front of every keystroke of the whole computer.
+// Alt+Tab, Alt+Maj+Tab, Alt+Échap, the Windows key and the key that plays
+// and pauses never reach the window they are typed at: the system acts on
+// them itself. A remote desktop wants the opposite, and the only way
+// Microsoft documents is to step in front of every keystroke of the whole
+// computer.
 //
 // Two of those already existed and neither could work here. SDL's own
 // grab, which this mode deliberately leaves off, swallows Alt and Control
@@ -20,8 +21,17 @@
 //
 // This one is neither. It runs in the program that really receives the
 // keyboard, it asks only whether that program has the focus, and it
-// swallows Tab, Échap and the Windows key and nothing else: Alt, Control
-// and Shift travel on untouched, so ZyrDesk keeps its own shortcuts.
+// swallows Tab, Échap, the Windows key, the screen key and the key that
+// plays and pauses, and nothing else: Alt, Control and Shift travel on
+// untouched, so ZyrDesk keeps its own shortcuts.
+//
+// Who produced the keystroke is not asked. A keystroke another program
+// sent is aimed at the window that has the keyboard exactly as a finger's
+// is, and handing it back to the system had it act on this computer
+// instead: that is what a hand asking for the far computer's next window
+// from a touchpad sends, and what an on-screen keyboard sends for
+// somebody who cannot use a real one. Only what a modifier is doing is
+// still read from the hand alone, that being a state and not an aim.
 //
 // It is laid again at every gaining of the focus, and that is not tidiness.
 // The system calls these hooks newest first, and anything installed after
