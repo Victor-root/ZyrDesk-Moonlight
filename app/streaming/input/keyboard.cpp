@@ -392,6 +392,25 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
             case SDL_SCANCODE_AC_HOME:
                 keyCode = 0xAC;
                 break;
+            // zyr: the transport keys, which sit right after the browser
+            // ones above and were simply missing. Every laptop carries
+            // them on its function row, and a host that never feels them
+            // is a host nothing can be paused on from here. The volume
+            // and mute keys beside them are deliberately left out: those
+            // are about the room the person is sitting in, not the one
+            // they are watching.
+            case SDL_SCANCODE_AUDIONEXT:
+                keyCode = 0xB0;
+                break;
+            case SDL_SCANCODE_AUDIOPREV:
+                keyCode = 0xB1;
+                break;
+            case SDL_SCANCODE_AUDIOSTOP:
+                keyCode = 0xB2;
+                break;
+            case SDL_SCANCODE_AUDIOPLAY:
+                keyCode = 0xB3;
+                break;
             case SDL_SCANCODE_SEMICOLON:
                 keyCode = 0xBA;
                 break;
