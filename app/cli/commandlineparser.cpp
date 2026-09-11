@@ -377,6 +377,12 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     parser.addToggleOption("swap-gamepad-buttons", "swap A/B and X/Y gamepad buttons (Nintendo-style)");
     parser.addToggleOption("keep-awake", "prevent display sleep while streaming");
     parser.addToggleOption("performance-overlay", "show performance overlay");
+    // zyr: every other preference of this settings page has its own
+    // toggle here; this one was missed. It decides whether a warning
+    // about the link is drawn over the picture, which a program driving
+    // this engine may well want to say itself, in its own window and in
+    // its own words, rather than have burnt into the video.
+    parser.addToggleOption("connection-warnings", "connection quality warnings");
     parser.addToggleOption("hdr", "HDR streaming");
     parser.addToggleOption("yuv444", "YUV 4:4:4 sampling, if supported");
     parser.addChoiceOption("capture-system-keys", "capture system key combos", m_CaptureSysKeysModeMap.keys());
@@ -503,6 +509,9 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
 
     // Resolve --performance-overlay and --no-performance-overlay options
     preferences->showPerformanceOverlay = parser.getToggleOptionValue("performance-overlay", preferences->showPerformanceOverlay);
+
+    // Resolve --connection-warnings and --no-connection-warnings options
+    preferences->connectionWarnings = parser.getToggleOptionValue("connection-warnings", preferences->connectionWarnings);
 
     // Resolve --hdr and --no-hdr options
     preferences->enableHdr = parser.getToggleOptionValue("hdr", preferences->enableHdr);
