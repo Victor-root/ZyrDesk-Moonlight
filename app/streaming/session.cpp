@@ -1,5 +1,6 @@
 #include "session.h"
 #include "streaming/input/zyrsystemkeys.h"
+#include "streaming/video/statsreport.h"
 #include "streaming/zyrfollow.h"
 #include "settings/streamingpreferences.h"
 #include "streaming/streamutils.h"
@@ -1702,6 +1703,23 @@ static Uint32 zyrPointTick(Uint32 interval, void*)
     return interval;
 }
 
+// zyr: how often the reading is written again, so that the one number in
+// it that cannot wait is current.
+//
+// Done here rather than pushed into the loop, unlike the two above: what
+// happens is a file being replaced, which belongs to no thread in
+// particular. And it has to happen away from the frames: a picture that
+// has frozen is a decoder with nothing to do, so the one place that used
+// to write this reading is the one place that stops running exactly when
+// there is something to say.
+#define ZYR_STATS_EVERY_MS 100
+
+static Uint32 zyrStatsTick(Uint32 interval, void*)
+{
+    StatsReport::tick();
+    return interval;
+}
+
 // zyr: whether the file this engine follows says the stream should be
 // something else, and makes it so when it does.
 //
@@ -2178,6 +2196,9 @@ void Session::execInternal()
     // looked at several times more often, and setting a cursor belongs
     // to the thread that owns the window, which is this one.
     SDL_TimerID zyrPointTimer = ZyrFollow::pointerWanted() ? SDL_AddTimer(ZYR_POINT_EVERY_MS, zyrPointTick, nullptr) : 0;
+    // zyr: and the reading of what this session is costing, so that the
+    // one number in it that cannot wait says what is happening now.
+    SDL_TimerID zyrStatsTimer = StatsReport::wanted() ? SDL_AddTimer(ZYR_STATS_EVERY_MS, zyrStatsTick, nullptr) : 0;
 
     // Hijack this thread to be the SDL main thread. We have to do this
     // because we want to suspend all Qt processing until the stream is over.
@@ -2541,6 +2562,9 @@ DispatchDeferredCleanup:
     }
     if (zyrFollowTimer != 0) {
         SDL_RemoveTimer(zyrFollowTimer);
+    }
+    if (zyrStatsTimer != 0) {
+        SDL_RemoveTimer(zyrStatsTimer);
     }
 
     // Uncapture the mouse and hide the window immediately,

@@ -1,11 +1,52 @@
 #include "statsreport.h"
 
+#include <QMutex>
+#include <QMutexLocker>
 #include <QSaveFile>
 #include <SDL.h>
 
 namespace
 {
 QString s_Path;
+
+// How often the line is written at most.
+//
+// Five times a second, which is what the standing-still number is worth:
+// a picture that has stopped has to be seen to have stopped while it is
+// still surprising, and a reader told a second later has already been
+// stared at. The rest of the line is a window a second wide and simply
+// repeats itself in between, which costs the reader nothing: it is the
+// same reading it already had.
+const Uint32 AT_MOST_EVERY_MS = 200;
+
+// The last reading, kept so a reminder can write it again with only the
+// time since the last frame moved on.
+//
+// Two threads reach it, the one that decodes and the one the reminder
+// runs on, so it is held under a lock. Nothing here is on the path of a
+// frame: the lock is taken five times a second and once a second.
+QMutex s_Held;
+VIDEO_STATS s_Stats = {};
+QString s_Codec;
+int s_Width = 0;
+int s_Height = 0;
+// How many seconds that window really covered, worked out when it was
+// handed in and never again. Worked out afresh at every write, it would
+// grow with the clock while the frames counted over it did not, and the
+// rate and the bitrate would fall through the floor between two windows
+// with nothing having changed.
+double s_Over = 0.0;
+bool s_Read = false;
+Uint32 s_Written = 0;
+
+// When the last frame reached the decoder, as the machine has counted
+// milliseconds since it started, and nought until one has.
+//
+// Set without a lock and read without one: it is written on the path of
+// every frame, it is one number, and a reader that catches it an instant
+// late is a reader whose answer is an instant old. Nought never means
+// « just now »: it means no frame has arrived at all.
+SDL_atomic_t s_LastFrame;
 
 // What a number means when there is nothing to divide by.
 //
@@ -17,6 +58,15 @@ QString each(double total, unsigned int over)
 {
     return over == 0 ? QString() : QString::number(total / over, 'f', 2);
 }
+
+// How long the picture has been standing still, as the line says it.
+QString sinceTheLastFrame()
+{
+    const int at = SDL_AtomicGet(&s_LastFrame);
+    return at == 0 ? QString() : QString::number(SDL_GetTicks() - (Uint32)at);
+}
+
+void put();
 }
 
 void StatsReport::reportTo(const QString& path)
@@ -29,6 +79,30 @@ bool StatsReport::wanted()
     return !s_Path.isEmpty();
 }
 
+void StatsReport::aFrameArrived()
+{
+    if (s_Path.isEmpty()) {
+        return;
+    }
+    // Nought is the one value this may not leave behind, being the word
+    // for « no frame has ever arrived »: a machine that has been up for
+    // exactly that millisecond says one instead.
+    const Uint32 now = SDL_GetTicks();
+    SDL_AtomicSet(&s_LastFrame, (int)(now == 0 ? 1 : now));
+}
+
+void StatsReport::tick()
+{
+    if (s_Path.isEmpty()) {
+        return;
+    }
+    QMutexLocker holding(&s_Held);
+    if (!s_Read || !SDL_TICKS_PASSED(SDL_GetTicks(), s_Written + AT_MOST_EVERY_MS)) {
+        return;
+    }
+    put();
+}
+
 void StatsReport::write(const VIDEO_STATS& stats,
                         const char* codec,
                         int width,
@@ -37,20 +111,43 @@ void StatsReport::write(const VIDEO_STATS& stats,
     if (s_Path.isEmpty()) {
         return;
     }
-
+    QMutexLocker holding(&s_Held);
+    s_Stats = stats;
+    s_Codec = QString(codec);
+    s_Width = width;
+    s_Height = height;
     // The seconds the window really covers, which is about one and never
     // exactly one: the window is flipped on the first frame to arrive
     // after a second has passed, and how late that is depends on the
     // frame rate. Dividing by a flat second would read as a rate that
     // rises and falls with nothing changing.
-    const double over =
-        stats.measurementStartTimestamp == 0
-            ? 0.0
-            : (double)(SDL_GetTicks() - stats.measurementStartTimestamp) / 1000.0;
+    s_Over = stats.measurementStartTimestamp == 0
+                 ? 0.0
+                 : (double)(SDL_GetTicks() - stats.measurementStartTimestamp) / 1000.0;
+    s_Read = true;
+    put();
+}
+
+namespace
+{
+// The line itself, from whatever was last handed in. The lock is held by
+// whoever calls this.
+void put()
+{
+    const VIDEO_STATS& stats = s_Stats;
+    const int width = s_Width;
+    const int height = s_Height;
+    const double over = s_Over;
+    s_Written = SDL_GetTicks();
 
     QString line;
-    line += QString("codec=%1 ").arg(codec);
+    line += QString("codec=%1 ").arg(s_Codec);
     line += QString("width=%1 height=%2 ").arg(width).arg(height);
+    // The one number here that is not a window: how long the picture has
+    // been standing still, right now. Everything beside it is an average
+    // over the second that has just passed, which is what a person reads
+    // and is a second too late to say that a session has stopped moving.
+    line += QString("since_frame_ms=%1 ").arg(sinceTheLastFrame());
     // Worked out here from the frames and the seconds they came over,
     // rather than read out of the window handed in: the rates a window
     // carries are only ever filled by the routine that merges two of
@@ -109,4 +206,5 @@ void StatsReport::write(const VIDEO_STATS& stats,
     file.write(line.toUtf8());
     file.write("\n");
     file.commit();
+}
 }

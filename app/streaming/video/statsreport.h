@@ -31,4 +31,21 @@ public:
                       const char* codec,
                       int width,
                       int height);
+
+    // A frame has reached the decoder.
+    //
+    // What this is for is the one number in the line that cannot be
+    // averaged and cannot wait: how long the picture has been standing
+    // still. Everything else here is a window a second wide, which is
+    // the right shape for numbers somebody reads and the wrong one for
+    // the moment a session stops moving.
+    static void aFrameArrived();
+
+    // Writes the last reading again, with that number brought up to
+    // date, unless one has just been written.
+    //
+    // Called from a reminder and not from the frames, which is the whole
+    // of why it exists: a picture that has frozen submits no frames at
+    // all, so nothing on the decoding path is running to say so.
+    static void tick();
 };
