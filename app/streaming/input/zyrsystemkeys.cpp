@@ -51,6 +51,18 @@ unsigned int s_SeenWindows[2] = { 0, 0 };
 unsigned int s_Sent = 0;
 unsigned int s_PassedNotTaking = 0;
 unsigned int s_PassedNoFocus = 0;
+unsigned int s_PassedNotOurs = 0;
+
+// The two windows the system named the last time one of ours was refused
+// because the keyboard was somewhere else, and the one it was compared
+// with.
+//
+// Kept because the refusal alone says nothing: the keyboard being at a
+// window of another program, at the window of the program that carries
+// this one, or at nothing at all are three different faults with three
+// different answers, and the count cannot tell them apart.
+HWND s_ElsewhereFocus = nullptr;
+HWND s_ElsewhereActive = nullptr;
 unsigned int s_PassedPlain = 0;
 unsigned int s_Told = 0;
 unsigned int s_Laid = 0;
@@ -172,9 +184,16 @@ bool theKeyboardIsReallyOurs()
     GUITHREADINFO front;
     front.cbSize = sizeof(front);
     if (!GetGUIThreadInfo(0, &front)) {
+        s_ElsewhereFocus = nullptr;
+        s_ElsewhereActive = nullptr;
         return false;
     }
-    return front.hwndFocus == s_Window;
+    if (front.hwndFocus == s_Window) {
+        return true;
+    }
+    s_ElsewhereFocus = front.hwndFocus;
+    s_ElsewhereActive = front.hwndActive;
+    return false;
 }
 
 LRESULT CALLBACK zyrKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
@@ -251,8 +270,19 @@ LRESULT CALLBACK zyrKeyboardHookProc(int nCode, WPARAM wParam, LPARAM lParam)
     // The distinction is kept where it belongs, above: what a modifier is
     // doing follows the hand, and letting an injected keystroke drive
     // that had this contradict the finger in front of it.
-    if (!s_Focused || !theKeyboardIsReallyOurs()) {
+    //
+    // The two halves of the question are asked apart, because they fail
+    // for different reasons and are put right in different places: the
+    // first is this window's own messages saying the keyboard left it,
+    // the second is the system naming another window as the one holding
+    // it. Counted together, a refusal said only that a key did not
+    // travel, which is the one thing already known.
+    if (!s_Focused) {
         s_PassedNoFocus++;
+        return CallNextHookEx(nullptr, nCode, wParam, lParam);
+    }
+    if (!theKeyboardIsReallyOurs()) {
+        s_PassedNotOurs++;
         return CallNextHookEx(nullptr, nCode, wParam, lParam);
     }
     if (up || !theSystemWouldEatIt(key->vkCode, wParam)) {
@@ -466,6 +496,9 @@ void ZyrSystemKeys::letGo()
     s_Sent = 0;
     s_PassedNotTaking = 0;
     s_PassedNoFocus = 0;
+    s_PassedNotOurs = 0;
+    s_ElsewhereFocus = nullptr;
+    s_ElsewhereActive = nullptr;
     s_PassedPlain = 0;
     s_Told = 0;
     s_Laid = 0;
@@ -476,20 +509,23 @@ void ZyrSystemKeys::letGo()
 void ZyrSystemKeys::tell()
 {
 #ifdef Q_OS_WIN32
-    const unsigned int seen = s_Sent + s_PassedNotTaking + s_PassedNoFocus + s_PassedPlain;
+    const unsigned int seen = s_Sent + s_PassedNotTaking + s_PassedNoFocus + s_PassedNotOurs + s_PassedPlain;
     if (!s_Ours || s_Told == seen) {
         return;
     }
     s_Told = seen;
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "zyr: system keys: Tab %u down %u up, Windows %u down %u up, Alt %u down %u up ; "
-                "%u carried to the host ; passed: %u switch off, %u without the keyboard, "
-                "%u plain ; hook laid %u times over %u comings of the keyboard, "
-                "switch on %s, keyboard %s, holding %u",
+                "%u carried to the host ; passed: %u switch off, %u the window says the "
+                "keyboard left it, %u the system names another window, %u plain ; "
+                "hook laid %u times over %u comings of the keyboard, "
+                "switch on %s, keyboard %s, holding %u ; ours %p, "
+                "last elsewhere: focus %p active %p",
                 s_SeenTab[0], s_SeenTab[1], s_SeenWindows[0], s_SeenWindows[1],
                 s_SeenAlt[0], s_SeenAlt[1],
-                s_Sent, s_PassedNotTaking, s_PassedNoFocus, s_PassedPlain,
+                s_Sent, s_PassedNotTaking, s_PassedNoFocus, s_PassedNotOurs, s_PassedPlain,
                 s_Laid, s_Comings, s_Taking ? "the session" : "this computer",
-                s_Focused ? "here" : "elsewhere", s_Carried);
+                s_Focused ? "here" : "elsewhere", s_Carried,
+                (void*) s_Window, (void*) s_ElsewhereFocus, (void*) s_ElsewhereActive);
 #endif
 }
