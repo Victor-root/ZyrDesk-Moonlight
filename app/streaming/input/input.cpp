@@ -139,6 +139,27 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_SpecialKeyCombos[KeyComboToggleSystemKeys].scanCode = SDL_SCANCODE_K;
     m_SpecialKeyCombos[KeyComboToggleSystemKeys].enabled = zyrOwnsSystemKeys();
 
+    // zyr: nobody types these three by hand. ZyrDesk sends them when the
+    // touchpad it reads has made a gesture, and they are enabled by the
+    // same thing as the switch above, our mode, and not by the switch
+    // itself: the pad is sent to the session by its own line of the menu,
+    // and what that line asks for must happen whatever the keyboard's
+    // line says.
+    m_SpecialKeyCombos[KeyComboWindowAfter].keyCombo = KeyComboWindowAfter;
+    m_SpecialKeyCombos[KeyComboWindowAfter].keyCode = SDLK_n;
+    m_SpecialKeyCombos[KeyComboWindowAfter].scanCode = SDL_SCANCODE_N;
+    m_SpecialKeyCombos[KeyComboWindowAfter].enabled = zyrOwnsSystemKeys();
+
+    m_SpecialKeyCombos[KeyComboWindowBefore].keyCombo = KeyComboWindowBefore;
+    m_SpecialKeyCombos[KeyComboWindowBefore].keyCode = SDLK_b;
+    m_SpecialKeyCombos[KeyComboWindowBefore].scanCode = SDL_SCANCODE_B;
+    m_SpecialKeyCombos[KeyComboWindowBefore].enabled = zyrOwnsSystemKeys();
+
+    m_SpecialKeyCombos[KeyComboPlayPause].keyCombo = KeyComboPlayPause;
+    m_SpecialKeyCombos[KeyComboPlayPause].keyCode = SDLK_p;
+    m_SpecialKeyCombos[KeyComboPlayPause].scanCode = SDL_SCANCODE_P;
+    m_SpecialKeyCombos[KeyComboPlayPause].enabled = zyrOwnsSystemKeys();
+
     m_OldIgnoreDevices = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES);
     m_OldIgnoreDevicesExcept = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT);
 

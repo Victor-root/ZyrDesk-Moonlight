@@ -114,6 +114,12 @@ public:
     // line say and nothing else about them differs.
     bool zyrOwnsSystemKeys();
 
+    // zyr: presses Alt+Tab, or Alt+Maj+Tab, on the far computer alone.
+    void zyrTheWindowAfter(bool back);
+
+    // zyr: and the play/pause key, the same way.
+    void zyrPlayOrPause();
+
     // zyr: the stream has been made over at another size under this
     // handler, which maps the pointer onto it.
     void zyrSetStreamSize(int streamWidth, int streamHeight);
@@ -144,6 +150,16 @@ private:
         // the Windows key belong to the session or to this computer; see
         // streaming/input/zyrsystemkeys.h.
         KeyComboToggleSystemKeys,
+        // zyr: the three a touchpad gesture asks for, sent straight down
+        // the session's own input stream. They exist because the road
+        // they replace had a condition none of them should have: typed on
+        // this computer's keyboard, Alt+Tab and the play key are kept by
+        // Windows, and only our own hook ever takes them back, and only
+        // while the picture holds the keyboard. A gesture of the pad has
+        // nothing to do with what this machine's windows are doing.
+        KeyComboWindowAfter,
+        KeyComboWindowBefore,
+        KeyComboPlayPause,
         KeyComboMax
     };
 

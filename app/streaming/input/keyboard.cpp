@@ -14,6 +14,24 @@
 #define VK_NUMPAD0 0x60
 #endif
 
+// zyr: the four this file presses on its own, for gestures that never
+// touch this computer's keyboard. Guarded one by one rather than in a
+// block: whichever of them a platform header already spells, it spells
+// the same, and taking one from there and three from here is how a
+// keycode ends up meaning two things.
+#ifndef VK_TAB
+#define VK_TAB 0x09
+#endif
+#ifndef VK_SHIFT
+#define VK_SHIFT 0x10
+#endif
+#ifndef VK_MENU
+#define VK_MENU 0x12
+#endif
+#ifndef VK_MEDIA_PLAY_PAUSE
+#define VK_MEDIA_PLAY_PAUSE 0xB3
+#endif
+
 void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
 {
     switch (combo) {
@@ -153,9 +171,78 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         updateKeyboardGrabState();
         break;
 
+    case KeyComboWindowAfter:
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "zyr: the window after, on the far computer");
+        zyrTheWindowAfter(false);
+        break;
+
+    case KeyComboWindowBefore:
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "zyr: the window before, on the far computer");
+        zyrTheWindowAfter(true);
+        break;
+
+    case KeyComboPlayPause:
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "zyr: play or pause, on the far computer");
+        zyrPlayOrPause();
+        break;
+
     default:
         Q_UNREACHABLE();
     }
+}
+
+// zyr: presses Alt+Tab on the far computer, or Alt+Maj+Tab to go the
+// other way, and on that computer only.
+//
+// Sent straight down the session's own input stream, which is the whole
+// point of it. The road it replaces was to type Alt+Tab on this
+// computer's keyboard and have our own hook take it back: Windows keeps
+// that combination for itself here, the hook is the one thing that ever
+// takes it back, and the hook is only laid while the picture holds the
+// keyboard. A gesture made on a touchpad that has been handed to the
+// session should not depend on which of this machine's windows is in
+// front, and on this road it does not.
+void SdlInputHandler::zyrTheWindowAfter(bool back)
+{
+    // Every key still down is given back first. What brought us here is
+    // Ctrl+Alt+Maj+N, sent by ZyrDesk, and those three have already gone
+    // over as pressed: left alone, the far computer would be asked for
+    // Ctrl+Alt+Maj+Tab, which is not what anyone did with their hand.
+    raiseAllKeys();
+
+    const char alt = MODIFIER_ALT;
+    const char both = MODIFIER_ALT | MODIFIER_SHIFT;
+    const char held = back ? both : alt;
+
+    // Pressed in order and released in the mirror order, Alt last: no key
+    // is left down over there that was not down before. A session that
+    // ends between the two halves of a combination is a modifier stuck on
+    // somebody else's machine, and that has happened here before.
+    LiSendKeyboardEvent(0x8000 | VK_MENU, KEY_ACTION_DOWN, alt);
+    if (back) {
+        LiSendKeyboardEvent(0x8000 | VK_SHIFT, KEY_ACTION_DOWN, both);
+    }
+    LiSendKeyboardEvent(0x8000 | VK_TAB, KEY_ACTION_DOWN, held);
+    LiSendKeyboardEvent(0x8000 | VK_TAB, KEY_ACTION_UP, held);
+    if (back) {
+        LiSendKeyboardEvent(0x8000 | VK_SHIFT, KEY_ACTION_UP, alt);
+    }
+    LiSendKeyboardEvent(0x8000 | VK_MENU, KEY_ACTION_UP, 0);
+}
+
+// zyr: the play/pause key, on the far computer alone.
+//
+// It travels this road for the reason Alt+Tab does: typed here, Windows
+// hands it to whatever is playing on this computer, and the session never
+// sees it.
+void SdlInputHandler::zyrPlayOrPause()
+{
+    raiseAllKeys();
+    LiSendKeyboardEvent(0x8000 | VK_MEDIA_PLAY_PAUSE, KEY_ACTION_DOWN, 0);
+    LiSendKeyboardEvent(0x8000 | VK_MEDIA_PLAY_PAUSE, KEY_ACTION_UP, 0);
 }
 
 void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
