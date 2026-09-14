@@ -145,9 +145,18 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     // itself: the pad is sent to the session by its own line of the menu,
     // and what that line asks for must happen whatever the keyboard's
     // line says.
+    // O and not N, which would have been the mnemonic one: the host
+    // engine already claims Ctrl+Alt+Maj+N for itself, to show and hide
+    // the pointer it draws, and swallows it rather than pressing it. A
+    // letter taken at both ends is a gesture that does something else on
+    // the far computer.
+    //
+    // All three sit in the same place on an AZERTY keyboard as on a
+    // QWERTY one, which is what lets them be sent by place: W would not
+    // have, and the name SDL reads there is already another combo's.
     m_SpecialKeyCombos[KeyComboWindowAfter].keyCombo = KeyComboWindowAfter;
-    m_SpecialKeyCombos[KeyComboWindowAfter].keyCode = SDLK_n;
-    m_SpecialKeyCombos[KeyComboWindowAfter].scanCode = SDL_SCANCODE_N;
+    m_SpecialKeyCombos[KeyComboWindowAfter].keyCode = SDLK_o;
+    m_SpecialKeyCombos[KeyComboWindowAfter].scanCode = SDL_SCANCODE_O;
     m_SpecialKeyCombos[KeyComboWindowAfter].enabled = zyrOwnsSystemKeys();
 
     m_SpecialKeyCombos[KeyComboWindowBefore].keyCombo = KeyComboWindowBefore;
