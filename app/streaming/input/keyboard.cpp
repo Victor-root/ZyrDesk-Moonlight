@@ -189,6 +189,12 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         zyrPlayOrPause();
         break;
 
+    case KeyComboSlideOver:
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "zyr: touchpad: the hand is up, letting the far computer's Alt go");
+        zyrTheHandIsUp();
+        break;
+
     default:
         Q_UNREACHABLE();
     }
@@ -207,29 +213,54 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
 // front, and on this road it does not.
 void SdlInputHandler::zyrTheWindowAfter(bool back)
 {
-    // Every key still down is given back first. What brought us here is
-    // Ctrl+Alt+Maj+N, sent by ZyrDesk, and those three have already gone
-    // over as pressed: left alone, the far computer would be asked for
-    // Ctrl+Alt+Maj+Tab, which is not what anyone did with their hand.
+    // Alt is held from one step to the next, and that is what shows the
+    // far computer's window list and keeps it up while the hand slides:
+    // it is the same thing that holds it up under a hand that taps Tab
+    // several times without letting Alt go. Pressed and released at every
+    // step, the list opened and shut too fast to be read, and one changed
+    // windows without seeing which one was coming.
+    //
+    // Everything else still down is given back. What brought us here is
+    // Ctrl+Alt+Maj+O, sent by ZyrDesk, whose three modifiers have already
+    // gone over as pressed: left alone, the far computer would be asked
+    // for Ctrl+Alt+Maj+Tab, which is not what anyone did with their hand.
+    // Our own Alt is taken out of that list first so the emptying does not
+    // release it, and put back after, which is what lets the end of the
+    // session release it if the hand never comes up.
+    const bool held = m_ZyrHoldsAlt;
+    m_KeysDown.remove(VK_MENU);
     raiseAllKeys();
-
-    const char alt = MODIFIER_ALT;
-    const char both = MODIFIER_ALT | MODIFIER_SHIFT;
-    const char held = back ? both : alt;
-
-    // Pressed in order and released in the mirror order, Alt last: no key
-    // is left down over there that was not down before. A session that
-    // ends between the two halves of a combination is a modifier stuck on
-    // somebody else's machine, and that has happened here before.
-    LiSendKeyboardEvent(0x8000 | VK_MENU, KEY_ACTION_DOWN, alt);
-    if (back) {
-        LiSendKeyboardEvent(0x8000 | VK_SHIFT, KEY_ACTION_DOWN, both);
+    if (!held) {
+        LiSendKeyboardEvent(0x8000 | VK_MENU, KEY_ACTION_DOWN, MODIFIER_ALT);
     }
-    LiSendKeyboardEvent(0x8000 | VK_TAB, KEY_ACTION_DOWN, held);
-    LiSendKeyboardEvent(0x8000 | VK_TAB, KEY_ACTION_UP, held);
+    m_ZyrHoldsAlt = true;
+    m_KeysDown.insert(VK_MENU);
+
+    const char with = back ? (MODIFIER_ALT | MODIFIER_SHIFT) : MODIFIER_ALT;
     if (back) {
-        LiSendKeyboardEvent(0x8000 | VK_SHIFT, KEY_ACTION_UP, alt);
+        LiSendKeyboardEvent(0x8000 | VK_SHIFT, KEY_ACTION_DOWN, with);
     }
+    LiSendKeyboardEvent(0x8000 | VK_TAB, KEY_ACTION_DOWN, with);
+    LiSendKeyboardEvent(0x8000 | VK_TAB, KEY_ACTION_UP, with);
+    if (back) {
+        LiSendKeyboardEvent(0x8000 | VK_SHIFT, KEY_ACTION_UP, MODIFIER_ALT);
+    }
+}
+
+// zyr: lets go of the Alt a slide was holding, the hand having left the
+// pad. That is what picks the window the list is showing.
+//
+// Nothing to do when no slide is holding one, which is most of the time:
+// the end of a slide is said whether or not this engine was the one
+// carrying it, and a session that started in the middle of a hand's
+// gesture has no Alt of its own down.
+void SdlInputHandler::zyrTheHandIsUp()
+{
+    if (!m_ZyrHoldsAlt) {
+        return;
+    }
+    m_ZyrHoldsAlt = false;
+    m_KeysDown.remove(VK_MENU);
     LiSendKeyboardEvent(0x8000 | VK_MENU, KEY_ACTION_UP, 0);
 }
 

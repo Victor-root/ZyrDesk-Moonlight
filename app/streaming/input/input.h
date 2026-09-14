@@ -114,8 +114,12 @@ public:
     // line say and nothing else about them differs.
     bool zyrOwnsSystemKeys();
 
-    // zyr: presses Alt+Tab, or Alt+Maj+Tab, on the far computer alone.
+    // zyr: presses Alt+Tab, or Alt+Maj+Tab, on the far computer alone,
+    // holding Alt down from one step to the next.
     void zyrTheWindowAfter(bool back);
+
+    // zyr: lets that Alt go, the hand having left the pad.
+    void zyrTheHandIsUp();
 
     // zyr: and the play/pause key, the same way.
     void zyrPlayOrPause();
@@ -160,6 +164,7 @@ private:
         KeyComboWindowAfter,
         KeyComboWindowBefore,
         KeyComboPlayPause,
+        KeyComboSlideOver,
         KeyComboMax
     };
 
@@ -210,6 +215,11 @@ private:
     int m_GamepadMask;
     GamepadState m_GamepadState[MAX_GAMEPADS];
     QSet<short> m_KeysDown;
+    // zyr: whether the Alt of a three-finger slide is being held on the
+    // session's behalf. Beside that list rather than in it: the list is
+    // what this computer's keyboard holds, and this Alt is held by
+    // nobody's finger.
+    bool m_ZyrHoldsAlt;
     bool m_FakeCaptureActive;
     QString m_OldIgnoreDevices;
     QString m_OldIgnoreDevicesExcept;

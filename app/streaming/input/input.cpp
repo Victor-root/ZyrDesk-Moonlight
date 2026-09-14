@@ -169,6 +169,13 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_SpecialKeyCombos[KeyComboPlayPause].scanCode = SDL_SCANCODE_P;
     m_SpecialKeyCombos[KeyComboPlayPause].enabled = zyrOwnsSystemKeys();
 
+    m_SpecialKeyCombos[KeyComboSlideOver].keyCombo = KeyComboSlideOver;
+    m_SpecialKeyCombos[KeyComboSlideOver].keyCode = SDLK_u;
+    m_SpecialKeyCombos[KeyComboSlideOver].scanCode = SDL_SCANCODE_U;
+    m_SpecialKeyCombos[KeyComboSlideOver].enabled = zyrOwnsSystemKeys();
+
+    m_ZyrHoldsAlt = false;
+
     m_OldIgnoreDevices = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES);
     m_OldIgnoreDevicesExcept = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT);
 
@@ -333,6 +340,11 @@ void SdlInputHandler::setWindow(SDL_Window *window)
 
 void SdlInputHandler::raiseAllKeys()
 {
+    // zyr: nothing is held on the session's behalf once this has run, the
+    // Alt of a slide included. Said before the early return below, so that
+    // a list already empty clears it too: the two must never disagree, or
+    // a slide would go on holding an Alt that has already been let go.
+    m_ZyrHoldsAlt = false;
     if (m_KeysDown.isEmpty()) {
         return;
     }
