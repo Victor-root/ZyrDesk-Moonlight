@@ -106,7 +106,17 @@ bool Session::initializeAudioRenderer()
     return true;
 }
 
-int Session::getAudioRendererCapabilities(int audioConfiguration)
+// zyr: both questions asked of one renderer instead of two built one
+// after the other.
+//
+// Whether the sound card answers, and what the renderer behind it can
+// do, were asked separately: a renderer was built, read and thrown away,
+// then an identical one was built and thrown away again. On a computer
+// whose sound card does not answer, Windows takes eight seconds to say
+// so, and it was being asked twice before a session could open: sixteen
+// seconds of a twenty-seven second opening, spent twice over on the same
+// refusal.
+bool Session::probeAudio(int audioConfiguration, int* capabilities)
 {
     // Build a fake OPUS_MULTISTREAM_CONFIGURATION to give
     // the renderer the channel count and sample rate.
@@ -117,29 +127,11 @@ int Session::getAudioRendererCapabilities(int audioConfiguration)
 
     IAudioRenderer* audioRenderer = createAudioRenderer(&opusConfig);
     if (audioRenderer == nullptr) {
-        return 0;
-    }
-
-    int caps = audioRenderer->getCapabilities();
-
-    delete audioRenderer;
-
-    return caps;
-}
-
-bool Session::testAudio(int audioConfiguration)
-{
-    // Build a fake OPUS_MULTISTREAM_CONFIGURATION to give
-    // the renderer the channel count and sample rate.
-    OPUS_MULTISTREAM_CONFIGURATION opusConfig = {};
-    opusConfig.sampleRate = 48000;
-    opusConfig.samplesPerFrame = 240;
-    opusConfig.channelCount = CHANNEL_COUNT_FROM_AUDIO_CONFIGURATION(audioConfiguration);
-
-    IAudioRenderer* audioRenderer = createAudioRenderer(&opusConfig);
-    if (audioRenderer == nullptr) {
+        *capabilities = 0;
         return false;
     }
+
+    *capabilities = audioRenderer->getCapabilities();
 
     delete audioRenderer;
 

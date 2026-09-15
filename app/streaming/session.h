@@ -165,9 +165,10 @@ private:
 
     bool initializeAudioRenderer();
 
-    bool testAudio(int audioConfiguration);
-
-    int getAudioRendererCapabilities(int audioConfiguration);
+    // zyr: whether the sound card answers at that configuration, and
+    // what the renderer behind it can do. One question, because it is
+    // one renderer built and read: see audio/audio.cpp.
+    bool probeAudio(int audioConfiguration, int* capabilities);
 
     void getWindowDimensions(int& x, int& y,
                              int& width, int& height);

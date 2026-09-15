@@ -693,7 +693,10 @@ bool Session::initialize()
     m_AudioCallbacks.init = arInit;
     m_AudioCallbacks.cleanup = arCleanup;
     m_AudioCallbacks.decodeAndPlaySample = arDecodeAndPlaySample;
-    m_AudioCallbacks.capabilities = getAudioRendererCapabilities(m_StreamConfig.audioConfiguration);
+    // zyr: what the renderer can do is read in validateLaunch, where
+    // whether it opens at all is settled. Both answers came from a
+    // renderer built for the question and thrown away, and it was being
+    // built twice.
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
                 "Audio channel count: %d",
@@ -1144,12 +1147,15 @@ bool Session::validateLaunch(SDL_Window* testWindow)
         }
     }
 
-    // Test if audio works at the specified audio configuration
-    bool audioTestPassed = testAudio(m_StreamConfig.audioConfiguration);
+    // Test if audio works at the specified audio configuration, and read
+    // in the same breath what the renderer that opened can do.
+    bool audioTestPassed = probeAudio(m_StreamConfig.audioConfiguration,
+                                      &m_AudioCallbacks.capabilities);
 
     // Gracefully degrade to stereo if surround sound doesn't work
     if (!audioTestPassed && CHANNEL_COUNT_FROM_AUDIO_CONFIGURATION(m_StreamConfig.audioConfiguration) > 2) {
-        audioTestPassed = testAudio(AUDIO_CONFIGURATION_STEREO);
+        audioTestPassed = probeAudio(AUDIO_CONFIGURATION_STEREO,
+                                     &m_AudioCallbacks.capabilities);
         if (audioTestPassed) {
             m_StreamConfig.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
             emitLaunchWarning(tr("Your selected surround sound setting is not supported by the current audio device."));
