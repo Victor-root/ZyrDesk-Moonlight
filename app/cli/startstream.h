@@ -33,6 +33,12 @@ signals:
     void searchingApp();
     void sessionCreated(QString appName, Session *session);
     void failed(QString text);
+    // zyr: told apart from the rest, because it is the one failure that
+    // is not a failure of this computer's: the far one simply does not
+    // know us. Whoever started us pairs the two and starts again, and
+    // « unreachable », which is what every failure returned, sent them
+    // looking for a network fault that was never there.
+    void notPaired(QString computerName);
     void appQuitRequired(QString appName);
 
 private slots:

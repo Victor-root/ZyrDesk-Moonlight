@@ -68,6 +68,21 @@ bool Session::initializeAudioRenderer()
 {
     int error;
 
+    // zyr: a card that refused before the session started is not asked
+    // again. This runs inside the connection when the stream's audio
+    // begins, and on a computer whose card does not answer Windows takes
+    // eight seconds to say so again: eight seconds during which the
+    // picture is already arriving and piling up behind a decoder that
+    // has not been created yet. The person has already been told this
+    // session is silent.
+    //
+    // Only for a card that was never there. One that dies mid-session is
+    // still picked up again by the retry further down, which is what
+    // that retry is for.
+    if (m_ZyrSoundCardRefused) {
+        return false;
+    }
+
     SDL_assert(m_OriginalAudioConfig.channelCount > 0);
     SDL_assert(m_AudioRenderer == nullptr);
     SDL_assert(m_OpusDecoder == nullptr);

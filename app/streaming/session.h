@@ -260,6 +260,15 @@ private:
     SDL_SpinLock m_DecoderLock;
     bool m_AudioDisabled;
     bool m_AudioMuted;
+    // zyr: whether the sound card refused before the session started.
+    //
+    // The question is asked once, before anything opens, and the person
+    // is told outright that this session will be silent. Asking it again
+    // when the stream's audio starts costs eight seconds on a computer
+    // whose card does not answer, and it costs them inside the
+    // connection itself, with the picture already arriving and piling up
+    // behind a decoder that does not exist yet.
+    bool m_ZyrSoundCardRefused;
     Uint32 m_FullScreenFlag;
     QWindow* m_QtWindow;
     bool m_ThreadedExec;

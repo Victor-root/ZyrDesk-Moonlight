@@ -552,6 +552,7 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_VideoDecoder(nullptr),
       m_DecoderLock(0),
       m_AudioMuted(false),
+      m_ZyrSoundCardRefused(false),
       m_QtWindow(nullptr),
       m_UnexpectedTermination(true), // Failure prior to streaming is unexpected
       m_InputHandler(nullptr),
@@ -1163,6 +1164,9 @@ bool Session::validateLaunch(SDL_Window* testWindow)
     }
 
     // If nothing worked, warn the user that audio will not work
+    // zyr: and hold on to that answer, so the stream's audio does not go
+    // and ask the same card the same question all over again.
+    m_ZyrSoundCardRefused = !audioTestPassed;
     if (!audioTestPassed) {
         emitLaunchWarning(tr("Failed to open audio device. Audio will be unavailable during this session."));
     }

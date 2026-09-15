@@ -302,6 +302,7 @@ enum ZyrExit {
     ZyrExitUnreachable = 3,
     ZyrExitPairingFailed = 4,
     ZyrExitQuitFailed = 5,
+    ZyrExitNotPaired = 6,
 };
 
 // One session runs per process, so what it went through is legitimately
@@ -823,6 +824,10 @@ int main(int argc, char *argv[])
             QObject::connect(launcher, &CliStartStream::Launcher::failed, &app, [](QString text) {
                 zyrSay(text);
                 QCoreApplication::exit(ZyrExitUnreachable);
+            });
+            QObject::connect(launcher, &CliStartStream::Launcher::notPaired, &app, [](QString name) {
+                zyrSay(QString("%1 does not know this computer").arg(name));
+                QCoreApplication::exit(ZyrExitNotPaired);
             });
 
             // Nobody is here to answer a dialog, and the session already
