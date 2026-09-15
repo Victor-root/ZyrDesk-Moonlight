@@ -825,6 +825,9 @@ int main(int argc, char *argv[])
                 zyrSay(text);
                 QCoreApplication::exit(ZyrExitUnreachable);
             });
+            // zyr: told apart from the failure above, because it is the
+            // one that is not this computer's: see the signal's own
+            // comment in cli/startstream.h.
             QObject::connect(launcher, &CliStartStream::Launcher::notPaired, &app, [](QString name) {
                 zyrSay(QString("%1 does not know this computer").arg(name));
                 QCoreApplication::exit(ZyrExitNotPaired);
