@@ -1150,24 +1150,37 @@ bool Session::validateLaunch(SDL_Window* testWindow)
 
     // Test if audio works at the specified audio configuration, and read
     // in the same breath what the renderer that opened can do.
-    bool audioTestPassed = probeAudio(m_StreamConfig.audioConfiguration,
-                                      &m_AudioCallbacks.capabilities);
-
-    // Gracefully degrade to stereo if surround sound doesn't work
-    if (!audioTestPassed && CHANNEL_COUNT_FROM_AUDIO_CONFIGURATION(m_StreamConfig.audioConfiguration) > 2) {
-        audioTestPassed = probeAudio(AUDIO_CONFIGURATION_STEREO,
+    //
+    // zyr: unless we were told outright that this computer has nothing to
+    // play through. Opening a card that is not there is not a question
+    // Windows answers quickly: it takes eight seconds to refuse, and
+    // they are spent before the picture. Whoever started this engine
+    // knows the machine and has already answered.
+    bool audioTestPassed = false;
+    if (m_Preferences->zyrSoundCardHere) {
+        audioTestPassed = probeAudio(m_StreamConfig.audioConfiguration,
                                      &m_AudioCallbacks.capabilities);
-        if (audioTestPassed) {
-            m_StreamConfig.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
-            emitLaunchWarning(tr("Your selected surround sound setting is not supported by the current audio device."));
+
+        // Gracefully degrade to stereo if surround sound doesn't work
+        if (!audioTestPassed && CHANNEL_COUNT_FROM_AUDIO_CONFIGURATION(m_StreamConfig.audioConfiguration) > 2) {
+            audioTestPassed = probeAudio(AUDIO_CONFIGURATION_STEREO,
+                                         &m_AudioCallbacks.capabilities);
+            if (audioTestPassed) {
+                m_StreamConfig.audioConfiguration = AUDIO_CONFIGURATION_STEREO;
+                emitLaunchWarning(tr("Your selected surround sound setting is not supported by the current audio device."));
+            }
         }
+    }
+    else {
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                    "zyr: no sound card on this computer, none is opened");
     }
 
     // If nothing worked, warn the user that audio will not work
     // zyr: and hold on to that answer, so the stream's audio does not go
     // and ask the same card the same question all over again.
     m_ZyrSoundCardRefused = !audioTestPassed;
-    if (!audioTestPassed) {
+    if (!audioTestPassed && m_Preferences->zyrSoundCardHere) {
         emitLaunchWarning(tr("Failed to open audio device. Audio will be unavailable during this session."));
     }
 

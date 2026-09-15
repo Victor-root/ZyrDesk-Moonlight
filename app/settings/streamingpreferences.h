@@ -186,6 +186,20 @@ public:
     // purpose: it belongs to whoever starts this engine and says so on
     // the command line, and no screen of this engine shows it.
     int controlTimeoutMs = 0;
+    // zyr: whether this computer has anything to play a session's sound
+    // through. False is « it has nothing », and then no sound card is
+    // opened at all.
+    //
+    // Told rather than found out: asking Windows for a card it does not
+    // have takes eight seconds to be refused, and those eight seconds
+    // are spent before the picture, every session. Whoever starts this
+    // engine already knows the machine it runs on and can answer in no
+    // time at all.
+    //
+    // Not remembered, like the line above and for the same reason: it is
+    // a fact about a computer at one moment, and a card plugged in
+    // between two sessions must count.
+    bool zyrSoundCardHere = true;
     AudioConfig audioConfig;
     VideoCodecConfig videoCodecConfig;
     bool enableHdr;

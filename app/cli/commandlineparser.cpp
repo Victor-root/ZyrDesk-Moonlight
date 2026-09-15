@@ -383,6 +383,8 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
     // this engine may well want to say itself, in its own window and in
     // its own words, rather than have burnt into the video.
     parser.addToggleOption("connection-warnings", "connection quality warnings");
+    // zyr: see StreamingPreferences::zyrSoundCardHere.
+    parser.addToggleOption("sound-card", "a sound card on this computer");
     parser.addToggleOption("hdr", "HDR streaming");
     parser.addToggleOption("yuv444", "YUV 4:4:4 sampling, if supported");
     parser.addChoiceOption("capture-system-keys", "capture system key combos", m_CaptureSysKeysModeMap.keys());
@@ -512,6 +514,9 @@ void StreamCommandLineParser::parse(const QStringList &args, StreamingPreference
 
     // Resolve --connection-warnings and --no-connection-warnings options
     preferences->connectionWarnings = parser.getToggleOptionValue("connection-warnings", preferences->connectionWarnings);
+
+    // zyr: resolve --sound-card and --no-sound-card options
+    preferences->zyrSoundCardHere = parser.getToggleOptionValue("sound-card", preferences->zyrSoundCardHere);
 
     // Resolve --hdr and --no-hdr options
     preferences->enableHdr = parser.getToggleOptionValue("hdr", preferences->enableHdr);
