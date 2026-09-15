@@ -355,7 +355,17 @@ void ComputerManager::startPolling()
         return;
     }
 
-    if (m_Prefs->enableMdns) {
+    // zyr: nothing for this engine to discover. ZyrDesk hands it the one
+    // address it should ever speak to, a tunnel on this very machine, and
+    // that address is the whole of what a session is. Browsing the network
+    // finds the real machines sitting behind that tunnel instead, each
+    // with every address it owns, and the poll below then tries them one
+    // after another: an address that answers nothing costs a whole
+    // connection attempt, and this happens before the first picture.
+    const bool zyrDrivesUs =
+            m_Prefs->captureSysKeysMode == StreamingPreferences::CSK_ZYRDESK ||
+            m_Prefs->captureSysKeysMode == StreamingPreferences::CSK_ZYRDESK_OFF;
+    if (m_Prefs->enableMdns && !zyrDrivesUs) {
         // Start an MDNS query for GameStream hosts
         m_MdnsServer.reset(new QMdnsEngine::Server());
         m_MdnsBrowser = new QMdnsEngine::Browser(m_MdnsServer.data(), "_nvstream._tcp.local.");
@@ -368,6 +378,9 @@ void ComputerManager::startPolling()
                     this, &ComputerManager::handleMdnsServiceResolved);
             m_PendingResolution.append(pendingComputer);
         });
+    }
+    else if (zyrDrivesUs) {
+        qInfo() << "zyr: not browsing the network: the address to speak to was given to us";
     }
     else {
         qWarning() << "mDNS is disabled by user preference";
