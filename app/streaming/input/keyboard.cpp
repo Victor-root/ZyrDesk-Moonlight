@@ -287,6 +287,30 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         return;
     }
 
+    // zyr: said for every key ZyrDesk sends for a gesture of the touchpad
+    // it reads, whatever modifiers this engine believes are held at the
+    // time. The test below answers only when it believes all three are,
+    // so a keystroke that arrives with one of them missing and one that
+    // never arrived at all read exactly the same from the other end: this
+    // is the line that tells the two apart, and it names what this engine
+    // saw rather than what was meant.
+    //
+    // Only those four keys, and never the rest of what is typed in a
+    // session: a journal is read by whoever asks for it.
+    for (int i = KeyComboWindowAfter; i <= KeyComboSlideOver; i++) {
+        if (event->keysym.scancode == m_SpecialKeyCombos[i].scanCode) {
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                        "zyr: touchpad: a gesture key %s, name 0x%X place 0x%X, "
+                        "modifiers held 0x%X, ours to answer: %s",
+                        event->state == SDL_PRESSED ? "arrived" : "was let go",
+                        (unsigned int) event->keysym.sym,
+                        (unsigned int) event->keysym.scancode,
+                        (unsigned int) event->keysym.mod,
+                        m_SpecialKeyCombos[i].enabled ? "yes" : "no");
+            break;
+        }
+    }
+
     // Check for our special key combos
     if ((event->state == SDL_PRESSED) &&
             (event->keysym.mod & KMOD_CTRL) &&
@@ -303,17 +327,6 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         // where the SDLK for one shortcut collides with
         // the scancode of another.
 
-        // zyr: said for every one of them, answered or not. A shortcut
-        // that never arrives and one that arrives without being
-        // recognised read exactly the same from the other end, and this
-        // is the one line that tells them apart. The word touchpad is in
-        // it so that the pad's own sift shows it: these are sent by
-        // ZyrDesk for its gestures and by nothing else.
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "zyr: touchpad: Ctrl+Alt+Maj held, name 0x%X place 0x%X",
-                    (unsigned int) event->keysym.sym,
-                    (unsigned int) event->keysym.scancode);
-
         for (int i = 0; i < KeyComboMax; i++) {
             if (m_SpecialKeyCombos[i].enabled && event->keysym.sym == m_SpecialKeyCombos[i].keyCode) {
                 performSpecialKeyCombo(m_SpecialKeyCombos[i].keyCombo);
@@ -328,10 +341,15 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
             }
         }
 
-        // zyr: and said when none of ours answers, rather than left to be
-        // guessed from the absence of the line above.
+        // zyr: and said when none of the two searches above answered,
+        // rather than left to be guessed from their silence. The key is
+        // named here too: this line is reached by anything typed under the
+        // three modifiers, ours or not.
         SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "zyr: touchpad: none of ours answers to it, it goes to the far computer");
+                    "zyr: touchpad: none of ours answers to name 0x%X place 0x%X, "
+                    "it goes to the far computer",
+                    (unsigned int) event->keysym.sym,
+                    (unsigned int) event->keysym.scancode);
     }
 
     // Set modifier flags
