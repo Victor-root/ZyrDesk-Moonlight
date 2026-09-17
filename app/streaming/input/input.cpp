@@ -139,43 +139,6 @@ SdlInputHandler::SdlInputHandler(StreamingPreferences& prefs, int streamWidth, i
     m_SpecialKeyCombos[KeyComboToggleSystemKeys].scanCode = SDL_SCANCODE_K;
     m_SpecialKeyCombos[KeyComboToggleSystemKeys].enabled = zyrOwnsSystemKeys();
 
-    // zyr: nobody types these three by hand. ZyrDesk sends them when the
-    // touchpad it reads has made a gesture, and they are enabled by the
-    // same thing as the switch above, our mode, and not by the switch
-    // itself: the pad is sent to the session by its own line of the menu,
-    // and what that line asks for must happen whatever the keyboard's
-    // line says.
-    // O and not N, which would have been the mnemonic one: the host
-    // engine already claims Ctrl+Alt+Maj+N for itself, to show and hide
-    // the pointer it draws, and swallows it rather than pressing it. A
-    // letter taken at both ends is a gesture that does something else on
-    // the far computer.
-    //
-    // All three sit in the same place on an AZERTY keyboard as on a
-    // QWERTY one, which is what lets them be sent by place: W would not
-    // have, and the name SDL reads there is already another combo's.
-    m_SpecialKeyCombos[KeyComboWindowAfter].keyCombo = KeyComboWindowAfter;
-    m_SpecialKeyCombos[KeyComboWindowAfter].keyCode = SDLK_o;
-    m_SpecialKeyCombos[KeyComboWindowAfter].scanCode = SDL_SCANCODE_O;
-    m_SpecialKeyCombos[KeyComboWindowAfter].enabled = zyrOwnsSystemKeys();
-
-    m_SpecialKeyCombos[KeyComboWindowBefore].keyCombo = KeyComboWindowBefore;
-    m_SpecialKeyCombos[KeyComboWindowBefore].keyCode = SDLK_b;
-    m_SpecialKeyCombos[KeyComboWindowBefore].scanCode = SDL_SCANCODE_B;
-    m_SpecialKeyCombos[KeyComboWindowBefore].enabled = zyrOwnsSystemKeys();
-
-    m_SpecialKeyCombos[KeyComboPlayPause].keyCombo = KeyComboPlayPause;
-    m_SpecialKeyCombos[KeyComboPlayPause].keyCode = SDLK_p;
-    m_SpecialKeyCombos[KeyComboPlayPause].scanCode = SDL_SCANCODE_P;
-    m_SpecialKeyCombos[KeyComboPlayPause].enabled = zyrOwnsSystemKeys();
-
-    m_SpecialKeyCombos[KeyComboSlideOver].keyCombo = KeyComboSlideOver;
-    m_SpecialKeyCombos[KeyComboSlideOver].keyCode = SDLK_u;
-    m_SpecialKeyCombos[KeyComboSlideOver].scanCode = SDL_SCANCODE_U;
-    m_SpecialKeyCombos[KeyComboSlideOver].enabled = zyrOwnsSystemKeys();
-
-    m_ZyrHoldsAlt = false;
-
     m_OldIgnoreDevices = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES);
     m_OldIgnoreDevicesExcept = SDL_GetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT);
 
@@ -340,11 +303,6 @@ void SdlInputHandler::setWindow(SDL_Window *window)
 
 void SdlInputHandler::raiseAllKeys()
 {
-    // zyr: nothing is held on the session's behalf once this has run, the
-    // Alt of a slide included. Said before the early return below, so that
-    // a list already empty clears it too: the two must never disagree, or
-    // a slide would go on holding an Alt that has already been let go.
-    m_ZyrHoldsAlt = false;
     if (m_KeysDown.isEmpty()) {
         return;
     }

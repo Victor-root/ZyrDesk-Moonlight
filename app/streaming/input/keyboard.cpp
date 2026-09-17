@@ -171,109 +171,9 @@ void SdlInputHandler::performSpecialKeyCombo(KeyCombo combo)
         updateKeyboardGrabState();
         break;
 
-    case KeyComboWindowAfter:
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "zyr: the window after, on the far computer");
-        zyrTheWindowAfter(false);
-        break;
-
-    case KeyComboWindowBefore:
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "zyr: the window before, on the far computer");
-        zyrTheWindowAfter(true);
-        break;
-
-    case KeyComboPlayPause:
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "zyr: play or pause, on the far computer");
-        zyrPlayOrPause();
-        break;
-
-    case KeyComboSlideOver:
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "zyr: touchpad: the hand is up, letting the far computer's Alt go");
-        zyrTheHandIsUp();
-        break;
-
     default:
         Q_UNREACHABLE();
     }
-}
-
-// zyr: presses Alt+Tab on the far computer, or Alt+Maj+Tab to go the
-// other way, and on that computer only.
-//
-// Sent straight down the session's own input stream, which is the whole
-// point of it. The road it replaces was to type Alt+Tab on this
-// computer's keyboard and have our own hook take it back: Windows keeps
-// that combination for itself here, the hook is the one thing that ever
-// takes it back, and the hook is only laid while the picture holds the
-// keyboard. A gesture made on a touchpad that has been handed to the
-// session should not depend on which of this machine's windows is in
-// front, and on this road it does not.
-void SdlInputHandler::zyrTheWindowAfter(bool back)
-{
-    // Alt is held from one step to the next, and that is what shows the
-    // far computer's window list and keeps it up while the hand slides:
-    // it is the same thing that holds it up under a hand that taps Tab
-    // several times without letting Alt go. Pressed and released at every
-    // step, the list opened and shut too fast to be read, and one changed
-    // windows without seeing which one was coming.
-    //
-    // Everything else still down is given back. What brought us here is
-    // Ctrl+Alt+Maj+O, sent by ZyrDesk, whose three modifiers have already
-    // gone over as pressed: left alone, the far computer would be asked
-    // for Ctrl+Alt+Maj+Tab, which is not what anyone did with their hand.
-    // Our own Alt is taken out of that list first so the emptying does not
-    // release it, and put back after, which is what lets the end of the
-    // session release it if the hand never comes up.
-    const bool held = m_ZyrHoldsAlt;
-    m_KeysDown.remove(VK_MENU);
-    raiseAllKeys();
-    if (!held) {
-        LiSendKeyboardEvent(0x8000 | VK_MENU, KEY_ACTION_DOWN, MODIFIER_ALT);
-    }
-    m_ZyrHoldsAlt = true;
-    m_KeysDown.insert(VK_MENU);
-
-    const char with = back ? (MODIFIER_ALT | MODIFIER_SHIFT) : MODIFIER_ALT;
-    if (back) {
-        LiSendKeyboardEvent(0x8000 | VK_SHIFT, KEY_ACTION_DOWN, with);
-    }
-    LiSendKeyboardEvent(0x8000 | VK_TAB, KEY_ACTION_DOWN, with);
-    LiSendKeyboardEvent(0x8000 | VK_TAB, KEY_ACTION_UP, with);
-    if (back) {
-        LiSendKeyboardEvent(0x8000 | VK_SHIFT, KEY_ACTION_UP, MODIFIER_ALT);
-    }
-}
-
-// zyr: lets go of the Alt a slide was holding, the hand having left the
-// pad. That is what picks the window the list is showing.
-//
-// Nothing to do when no slide is holding one, which is most of the time:
-// the end of a slide is said whether or not this engine was the one
-// carrying it, and a session that started in the middle of a hand's
-// gesture has no Alt of its own down.
-void SdlInputHandler::zyrTheHandIsUp()
-{
-    if (!m_ZyrHoldsAlt) {
-        return;
-    }
-    m_ZyrHoldsAlt = false;
-    m_KeysDown.remove(VK_MENU);
-    LiSendKeyboardEvent(0x8000 | VK_MENU, KEY_ACTION_UP, 0);
-}
-
-// zyr: the play/pause key, on the far computer alone.
-//
-// It travels this road for the reason Alt+Tab does: typed here, Windows
-// hands it to whatever is playing on this computer, and the session never
-// sees it.
-void SdlInputHandler::zyrPlayOrPause()
-{
-    raiseAllKeys();
-    LiSendKeyboardEvent(0x8000 | VK_MEDIA_PLAY_PAUSE, KEY_ACTION_DOWN, 0);
-    LiSendKeyboardEvent(0x8000 | VK_MEDIA_PLAY_PAUSE, KEY_ACTION_UP, 0);
 }
 
 void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
@@ -285,30 +185,6 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
         // Ignore repeat key down events
         SDL_assert(event->state == SDL_PRESSED);
         return;
-    }
-
-    // zyr: said for every key ZyrDesk sends for a gesture of the touchpad
-    // it reads, whatever modifiers this engine believes are held at the
-    // time. The test below answers only when it believes all three are,
-    // so a keystroke that arrives with one of them missing and one that
-    // never arrived at all read exactly the same from the other end: this
-    // is the line that tells the two apart, and it names what this engine
-    // saw rather than what was meant.
-    //
-    // Only those four keys, and never the rest of what is typed in a
-    // session: a journal is read by whoever asks for it.
-    for (int i = KeyComboWindowAfter; i <= KeyComboSlideOver; i++) {
-        if (event->keysym.scancode == m_SpecialKeyCombos[i].scanCode) {
-            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                        "zyr: touchpad: a gesture key %s, name 0x%X place 0x%X, "
-                        "modifiers held 0x%X, ours to answer: %s",
-                        event->state == SDL_PRESSED ? "arrived" : "was let go",
-                        (unsigned int) event->keysym.sym,
-                        (unsigned int) event->keysym.scancode,
-                        (unsigned int) event->keysym.mod,
-                        m_SpecialKeyCombos[i].enabled ? "yes" : "no");
-            break;
-        }
     }
 
     // Check for our special key combos
@@ -341,15 +217,6 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
             }
         }
 
-        // zyr: and said when none of the two searches above answered,
-        // rather than left to be guessed from their silence. The key is
-        // named here too: this line is reached by anything typed under the
-        // three modifiers, ours or not.
-        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
-                    "zyr: touchpad: none of ours answers to name 0x%X place 0x%X, "
-                    "it goes to the far computer",
-                    (unsigned int) event->keysym.sym,
-                    (unsigned int) event->keysym.scancode);
     }
 
     // Set modifier flags

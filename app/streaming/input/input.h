@@ -114,16 +114,6 @@ public:
     // line say and nothing else about them differs.
     bool zyrOwnsSystemKeys();
 
-    // zyr: presses Alt+Tab, or Alt+Maj+Tab, on the far computer alone,
-    // holding Alt down from one step to the next.
-    void zyrTheWindowAfter(bool back);
-
-    // zyr: lets that Alt go, the hand having left the pad.
-    void zyrTheHandIsUp();
-
-    // zyr: and the play/pause key, the same way.
-    void zyrPlayOrPause();
-
     // zyr: the stream has been made over at another size under this
     // handler, which maps the pointer onto it.
     void zyrSetStreamSize(int streamWidth, int streamHeight);
@@ -154,17 +144,6 @@ private:
         // the Windows key belong to the session or to this computer; see
         // streaming/input/zyrsystemkeys.h.
         KeyComboToggleSystemKeys,
-        // zyr: the three a touchpad gesture asks for, sent straight down
-        // the session's own input stream. They exist because the road
-        // they replace had a condition none of them should have: typed on
-        // this computer's keyboard, Alt+Tab and the play key are kept by
-        // Windows, and only our own hook ever takes them back, and only
-        // while the picture holds the keyboard. A gesture of the pad has
-        // nothing to do with what this machine's windows are doing.
-        KeyComboWindowAfter,
-        KeyComboWindowBefore,
-        KeyComboPlayPause,
-        KeyComboSlideOver,
         KeyComboMax
     };
 
@@ -215,11 +194,6 @@ private:
     int m_GamepadMask;
     GamepadState m_GamepadState[MAX_GAMEPADS];
     QSet<short> m_KeysDown;
-    // zyr: whether the Alt of a three-finger slide is being held on the
-    // session's behalf. Beside that list rather than in it: the list is
-    // what this computer's keyboard holds, and this Alt is held by
-    // nobody's finger.
-    bool m_ZyrHoldsAlt;
     bool m_FakeCaptureActive;
     QString m_OldIgnoreDevices;
     QString m_OldIgnoreDevicesExcept;
